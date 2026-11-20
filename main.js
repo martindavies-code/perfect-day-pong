@@ -94,6 +94,7 @@ let charterReviewBanner = '';
 let prevActSeen = 1;
 let overlayFocusIdx = 0;
 let choiceLocked = false;
+let lastOverlayScreen = null;
 
 function getOverlayButtons() {
   return Array.from(overlay.querySelectorAll('button:not([disabled])'));
@@ -591,6 +592,8 @@ function renderRouteHtml() {
 }
 
 function renderOverlay() {
+  const resetOverlayScroll = overlay.classList.contains('hidden') || lastOverlayScreen !== screen;
+  lastOverlayScreen = screen;
   if (screen !== 'playing') scoreAnnouncer.cancel();
   updateHud();
   choiceLocked = false;
@@ -1094,6 +1097,8 @@ function renderOverlay() {
     };
   }
   syncOverlayFocus();
+  // Reset only on a screen transition, not on same-screen feedback refreshes.
+  if (resetOverlayScroll) overlay.scrollTop = 0;
 }
 
 input.on('gesture', () => { audio.unlockFromGesture(); });
