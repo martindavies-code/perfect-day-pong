@@ -188,10 +188,13 @@ try {
   await cdp.send('Page.navigate', { url: `${baseUrl}/` });
   await new Promise((r) => setTimeout(r, 700));
   assert.equal(await evalJs(cdp, 'document.querySelector("h1")?.textContent'), 'Perfect Day Pong');
+  const startFoldExpr = `(() => { const r = document.getElementById('btn-new-run').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; })()`;
+  assert.equal(await evalJs(cdp, startFoldExpr), true, 'Start New Run stays above the fold at 1280x720');
 
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 700, deviceScaleFactor: 1, mobile: false });
   await new Promise((r) => setTimeout(r, 250));
   assert.equal(await evalJs(cdp, 'document.documentElement.scrollWidth > document.documentElement.clientWidth'), false, 'No horizontal overflow at 480x700');
+  assert.equal(await evalJs(cdp, startFoldExpr), true, 'Start New Run stays above the fold at 480x700');
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await new Promise((r) => setTimeout(r, 200));
 
