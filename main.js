@@ -75,6 +75,7 @@ let saveDoc = initialLoad.save;
 const renderer = createRenderer(canvas);
 const input = createInputManager(canvas, () => saveDoc.settings);
 const audio = createAudioEngine(() => saveDoc.settings);
+
 const cloud = createCloudManager();
 const scoreAnnouncer = createScoreAnnouncer(() => saveDoc.settings, () => audio.isMuted());
 
@@ -90,25 +91,43 @@ let resetConfirmPending = false;
 let saveNotice = '';
 let shopNotice = '';
 let lastInterstitial = pickInterstitialCard(Math.random);
+function renderCardHtml(card) {
+  const esc = t => String(t).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const label = card.tag === 'SOURCED' ? 'SOURCED' : card.tag === 'SATIRE, INVENTED' ? 'SATIRE, INVENTED, NOT A QUOTE' : card.tag;
+  return `<small class="card-tag">${esc(label)}${card.source ? ' · ' + esc(card.source) : ''}</small><br>“${esc(card.text)}”`;
+}
 let charterReviewBanner = '';
 let prevActSeen = 1;
 let overlayFocusIdx = 0;
 let choiceLocked = false;
 let lastOverlayScreen = null;
+// On pick screens nothing is highlighted until keyboard/gamepad navigation starts.
+let overlayNavActive = false;
 
 function getOverlayButtons() {
   return Array.from(overlay.querySelectorAll('button:not([disabled])'));
 }
 
+function isPickScreen() { return screen === 'choose_opponent' || screen === 'choose_pickup'; }
+
 function syncOverlayFocus() {
   const btns = getOverlayButtons();
-  btns.forEach((b, i) => b.classList.toggle('pad-focus', i === overlayFocusIdx));
+  const show = !isPickScreen() || overlayNavActive;
+  btns.forEach((b, i) => b.classList.toggle('pad-focus', show && i === overlayFocusIdx));
 }
 
 function moveOverlayFocus(dir) {
   if (screen === 'playing') return;
   const btns = getOverlayButtons();
   if (btns.length === 0) return;
+  if (isPickScreen() && !overlayNavActive) {
+    // First direction press only starts the highlight at the first card.
+    overlayNavActive = true;
+    overlayFocusIdx = 0;
+    syncOverlayFocus();
+    btns[0]?.focus();
+    return;
+  }
   const delta = (dir === 'down' || dir === 'right') ? 1 : -1;
   overlayFocusIdx = (overlayFocusIdx + delta + btns.length) % btns.length;
   syncOverlayFocus();
@@ -116,6 +135,7 @@ function moveOverlayFocus(dir) {
 }
 
 function activateOverlayFocus() {
+  if (isPickScreen() && !overlayNavActive) { moveOverlayFocus('down'); return; }
   const btns = getOverlayButtons();
   const target = btns[overlayFocusIdx] || btns[0];
   target?.click();
@@ -593,6 +613,7 @@ function renderRouteHtml() {
 
 function renderOverlay() {
   const resetOverlayScroll = overlay.classList.contains('hidden') || lastOverlayScreen !== screen;
+  if (lastOverlayScreen !== screen) overlayNavActive = false;
   lastOverlayScreen = screen;
   if (screen !== 'playing') scoreAnnouncer.cancel();
   updateHud();
@@ -617,13 +638,14 @@ function renderOverlay() {
           <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">BBC / ROOM TEN ROGUELIKE</span>
         </div>
         <p>Nine matches across three Acts. True 3D tennis-scored Pong haunted by late-night continuity.</p>
+        <p class="note-line persona">You play as John Birt, BBC Director-General 1992 to 2000. Cards marked SOURCED restate public record; SATIRE cards are invented jokes, not quotes.</p>
         <div class="stat-strip">
           <span>FEE POINTS: ${unspent}</span>
           <span>RUNS: ${saveDoc.stats.runsPlayed}</span>
           <span>WINS: ${saveDoc.stats.runsWon}</span>
           <span>LOU REED BEATEN: ${saveDoc.stats.louReedWins}</span>
         </div>
-        <div class="interstitial-box">“${lastInterstitial.text}”</div>
+        <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
         ${renderCloudBlockHtml()}
         <p class="note-line">Pair Bluetooth controllers in Windows first, then press any button so the browser detects it.</p>
         <p class="note-line">Headphones recommended for true 3D HRTF spatial ball &amp; impact cues.</p>
@@ -738,7 +760,7 @@ function renderOverlay() {
           </div>
           <span style="font-family:var(--mono);font-size:12px">MATCH ${runState.matchIndex + 1} / 9</span>
         </div>
-        <div class="interstitial-box">“${lastInterstitial.text}”</div>
+        <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
         ${renderRouteHtml()}
         ${renderMechanicsHtml()}
         <p>Select the next artist on the running order.</p>
@@ -781,7 +803,7 @@ function renderOverlay() {
           </div>
           <span style="font-family:var(--mono);font-size:12px">MATCH ${runState.matchIndex + 1} WON</span>
         </div>
-        <div class="interstitial-box">“${lastInterstitial.text}”</div>
+        <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
         <div class="choice-grid">${choicesHtml}</div>
       </div>
     `;
@@ -809,7 +831,7 @@ function renderOverlay() {
           <span class="fac-cat">-1 LIFE</span>
         </div>
         <p>Match lost to ${opp.name}. ${runState.lives} TV Licence${runState.lives === 1 ? '' : 's'} remaining. Replaying same fixture.</p>
-        <div class="interstitial-box">“${lastInterstitial.text}”</div>
+        <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
         <div class="btn-row">
           <button class="primary" id="btn-retry-opp" type="button">Replay ${opp.name}</button>
         </div>
@@ -823,7 +845,7 @@ function renderOverlay() {
         <div class="card-header">
           <div>
             <span class="fac-cat">${s.won ? 'TRANSMISSION COMPLETE' : 'OFF AIR'}</span>
-            <h1>${s.won ? 'You Make It What It Is' : 'Licence Revoked'}</h1>
+            <h1>${s.won ? 'You Make It What It Is, Mr Birt' : 'Licence Revoked'}</h1>
           </div>
           <span style="font-family:var(--mono);color:var(--accent-2)">+${s.earned} FEE PTS</span>
         </div>
