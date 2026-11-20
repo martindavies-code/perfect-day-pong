@@ -507,71 +507,71 @@ export const ACTS = [
 export const OPPONENTS = {
   // Act I pool (5)
   sheona_white: {
-    id: 'sheona_white', act: 1, name: 'Sheona White', vibe: 'Wide tenor-horn bat, long flat returns.',
+    id: 'sheona_white', callName: 'White', act: 1, name: 'Sheona White', vibe: 'Wide tenor-horn bat, long flat returns.',
     style: 'horn', width: 2.1, height: 1.0, reactionDelayMs: 250, maxSpeed: 4.5, predictionError: 0.78, missChance: 0.14,
   },
   visual_ministry: {
-    id: 'visual_ministry', act: 1, name: 'Visual Ministry Choir', vibe: 'Three small bats singing in unison.',
+    id: 'visual_ministry', callName: 'Visual Ministry', act: 1, name: 'Visual Ministry Choir', vibe: 'Three small bats singing in unison.',
     style: 'choir', width: 0.7, height: 0.7, reactionDelayMs: 235, maxSpeed: 4.7, predictionError: 0.75, missChance: 0.13,
   },
   brodsky_quartet: {
-    id: 'brodsky_quartet', act: 1, name: 'Brodsky Quartet', vibe: 'Four thin strips opening and closing on the beat.',
+    id: 'brodsky_quartet', callName: 'Brodsky Quartet', act: 1, name: 'Brodsky Quartet', vibe: 'Four thin strips opening and closing on the beat.',
     style: 'quartet', width: 0.42, height: 1.4, reactionDelayMs: 220, maxSpeed: 4.9, predictionError: 0.72, missChance: 0.12,
   },
   evan_dando: {
-    id: 'evan_dando', act: 1, name: 'Evan Dando', vibe: 'Unbothered. Slow and occasionally late to react.',
+    id: 'evan_dando', callName: 'Dando', act: 1, name: 'Evan Dando', vibe: 'Unbothered. Slow and occasionally late to react.',
     style: 'default', width: 1.5, height: 1.05, reactionDelayMs: 310, maxSpeed: 4.3, predictionError: 0.85, missChance: 0.16,
   },
   courtney_pine: {
-    id: 'courtney_pine', act: 1, name: 'Courtney Pine', vibe: 'Curving returns laced with jazzy spin.',
+    id: 'courtney_pine', callName: 'Pine', act: 1, name: 'Courtney Pine', vibe: 'Curving returns laced with jazzy spin.',
     style: 'default', width: 1.45, height: 1.05, reactionDelayMs: 215, maxSpeed: 5.0, predictionError: 0.7, missChance: 0.11, spinBias: 1.6,
   },
 
   // Act II pool (7) + Bono mini-boss
   heather_small: {
-    id: 'heather_small', act: 2, name: 'Heather Small', vibe: 'Fast off the mark, tires as the game deepens.',
+    id: 'heather_small', callName: 'Small', act: 2, name: 'Heather Small', vibe: 'Fast off the mark, tires as the game deepens.',
     style: 'default', width: 1.5, height: 1.05, reactionDelayMs: 175, maxSpeed: 6.1, predictionError: 0.58, missChance: 0.1,
   },
   tom_jones: {
-    id: 'tom_jones', act: 2, name: 'Tom Jones', vibe: 'Big serve, booming flat returns down the middle.',
+    id: 'tom_jones', callName: 'Jones', act: 2, name: 'Tom Jones', vibe: 'Big serve, booming flat returns down the middle.',
     style: 'default', width: 1.65, height: 1.15, reactionDelayMs: 185, maxSpeed: 5.7, predictionError: 0.6, missChance: 0.09, returnSpeedScale: 1.06,
   },
   gabrielle: {
-    id: 'gabrielle', act: 2, name: 'Gabrielle', vibe: 'Returns pulse to a visible beat ring.',
+    id: 'gabrielle', callName: 'Gabrielle', act: 2, name: 'Gabrielle', vibe: 'Returns pulse to a visible beat ring.',
     style: 'pulse', width: 1.45, height: 1.05, reactionDelayMs: 185, maxSpeed: 5.8, predictionError: 0.6, missChance: 0.1,
   },
   huey_morgan: {
-    id: 'huey_morgan', act: 2, name: 'Huey Morgan', vibe: 'Off-kilter returns that shift pace mid-flight.',
+    id: 'huey_morgan', callName: 'Morgan', act: 2, name: 'Huey Morgan', vibe: 'Off-kilter returns that shift pace mid-flight.',
     style: 'default', width: 1.45, height: 1.0, reactionDelayMs: 180, maxSpeed: 5.8, predictionError: 0.62, missChance: 0.1,
   },
   suzanne_vega: {
-    id: 'suzanne_vega', act: 2, name: 'Suzanne Vega', vibe: 'Small, quiet, precise bat near the centre.',
+    id: 'suzanne_vega', callName: 'Vega', act: 2, name: 'Suzanne Vega', vibe: 'Small, quiet, precise bat near the centre.',
     style: 'default', width: 1.05, height: 0.9, reactionDelayMs: 165, maxSpeed: 6.2, predictionError: 0.48, missChance: 0.09,
   },
   boyzone: {
-    id: 'boyzone', act: 2, name: 'Boyzone', vibe: 'Five bats in synchronised crossfading formation.',
+    id: 'boyzone', callName: 'Boyzone', act: 2, name: 'Boyzone', vibe: 'Five bats in synchronised crossfading formation.',
     style: 'boyzone', width: 0.58, height: 0.58, reactionDelayMs: 195, maxSpeed: 5.4, predictionError: 0.62, missChance: 0.1,
   },
   burning_spear: {
-    id: 'burning_spear', act: 2, name: 'Burning Spear', vibe: 'Wide bat, heavy off-beat rhythm.',
+    id: 'burning_spear', callName: 'Burning Spear', act: 2, name: 'Burning Spear', vibe: 'Wide bat, heavy off-beat rhythm.',
     style: 'default', width: 1.9, height: 1.1, reactionDelayMs: 200, maxSpeed: 5.3, predictionError: 0.64, missChance: 0.1,
   },
   bono: {
-    id: 'bono', act: 2, name: 'Bono', isBoss: true, vibe: 'Mini-boss: corner shades and a faint decoy shadow.',
+    id: 'bono', callName: 'Bono', act: 2, name: 'Bono', isBoss: true, vibe: 'Mini-boss: corner shades and a faint decoy shadow.',
     style: 'bono', width: 1.65, height: 1.15, reactionDelayMs: 155, maxSpeed: 6.5, predictionError: 0.52, missChance: 0.08,
   },
 
   // Act III fixed order (3)
   elton_john: {
-    id: 'elton_john', act: 3, name: 'Elton John', vibe: 'Piano-key bat rising in rolling arpeggios.',
+    id: 'elton_john', callName: 'Elton John', act: 3, name: 'Elton John', vibe: 'Piano-key bat rising in rolling arpeggios.',
     style: 'piano', width: 0.42, height: 1.15, reactionDelayMs: 145, maxSpeed: 6.8, predictionError: 0.48, missChance: 0.08,
   },
   david_bowie: {
-    id: 'david_bowie', act: 3, name: 'David Bowie', vibe: 'Chameleon bat; shifts room gravity once per match.',
+    id: 'david_bowie', callName: 'Bowie', act: 3, name: 'David Bowie', vibe: 'Chameleon bat; shifts room gravity once per match.',
     style: 'bowie', width: 1.5, height: 1.1, reactionDelayMs: 138, maxSpeed: 7.0, predictionError: 0.46, missChance: 0.07,
   },
   lou_reed: {
-    id: 'lou_reed', act: 3, name: 'Lou Reed', isBoss: true, vibe: 'Ultimate Boss: deadpan NYC, three phases, Borrowed Time.',
+    id: 'lou_reed', callName: 'Reed', act: 3, name: 'Lou Reed', isBoss: true, vibe: 'Ultimate Boss: deadpan NYC, three phases, Borrowed Time.',
     style: 'lou', width: 1.55, height: 1.1, reactionDelayMs: 125, maxSpeed: 7.3, predictionError: 0.44, missChance: 0.06,
   },
 };
@@ -583,7 +583,7 @@ export const PICKUPS = {
   bat_size: { id: 'bat_size', name: 'Widescreen Aperture', short: 'BAT+', desc: '+18% bat size (stackable).', maxStacks: 3 },
   bat_speed: { id: 'bat_speed', name: 'Outside Broadcast Rig', short: 'SPD+', desc: '+18% bat speed (stackable).', maxStacks: 3 },
   tempo_control: { id: 'tempo_control', name: 'Tempo Control', short: 'TMP+', desc: '+2 Tempo Control uses per match.', maxStacks: 3 },
-  extra_life: { id: 'extra_life', name: 'TV Licence Renewal', short: 'LIFE', desc: '+1 life (max 5).', maxStacks: 5 },
+  extra_life: { id: 'extra_life', name: 'TV Licence Renewal', short: 'LIC+', desc: '+1 licence fee (max 5).', maxStacks: 5 },
   curve_master: { id: 'curve_master', name: 'Curve Master', short: 'CRV+', desc: '+35% ball spin curve.', maxStacks: 2 },
   shadow_sight: { id: 'shadow_sight', name: 'Shadow Sight', short: 'SHD+', desc: 'Stronger depth ring & floor cues.', maxStacks: 2 },
   second_chance: { id: 'second_chance', name: 'Second Chance', short: '2ND', desc: 'Replay your first lost point each match.', maxStacks: 1 },
@@ -860,8 +860,8 @@ export const UPGRADES = {
   },
   startLives: {
     id: 'startLives',
-    name: 'Starting TV Licences',
-    desc: '+1 starting life per level (cap 5).',
+    name: 'Starting Licence Fees',
+    desc: '+1 starting licence fee per level (cap 5).',
     costs: [40, 90],
     maxLevel: 2,
   },
