@@ -1,5 +1,6 @@
 import { PERFECT_DAY_MOTIF } from './perfectday.js';
 import { BIRT_PORTRAIT_SRC } from './birt-portrait.js';
+import { OPPONENT_PORTRAITS } from './portraits.js';
 import { applyMouseSample, getScoreCall, getSpokenScoreCall, getRunRoute } from './playtest.js';
 import { createScoreAnnouncer } from './announcer.js';
 import {
@@ -856,6 +857,7 @@ function renderOverlay() {
       const opp = OPPONENTS[id];
       return `
         <button class="choice-card btn-pick-opp" data-opp="${id}" type="button">
+          <img class="opp-portrait" src="${OPPONENT_PORTRAITS[id] || ''}" width="96" height="96" alt="Pixel-art portrait of ${opp.name}" loading="lazy" />
           <div class="choice-title">${opp.name}</div>
           <div class="choice-sub">${opp.vibe}</div>
           <div class="choice-cta" style="color:${actDef.accent}">SELECT OPPONENT →</div>
