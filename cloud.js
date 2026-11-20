@@ -216,9 +216,10 @@ export function createCloudManager() {
         return { action: 'pulled', remoteSave };
       }
 
-      // Conflict: do not overwrite and do not merge
+      // Conflict or initial-connection comparison: do not overwrite and do not merge
       return {
         action: 'conflict',
+        conflictReason: decision.reason || 'diverged',
         localSave,
         remoteSave,
         fileId: file.id,
