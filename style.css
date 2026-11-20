@@ -764,6 +764,18 @@ button.primary:focus-visible {
   }
 }
 
+/* Opponent portraits on the select cards: crisp pixels, framed like the
+   title-screen Birt portrait. Static; no animation. */
+.opp-portrait {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 10px;
+  image-rendering: pixelated;
+  border: 1px solid var(--rule);
+  background: #0b0e16;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .choice-card {
     transition: none;
