@@ -12,8 +12,14 @@ export function applyMouseSample(pad, input, dt, room = ROOM) {
   // Use display-frame time, not one physics substep. Keep the measured swipe
   // velocity through every substep in this frame so spin is not lost at impact.
   const elapsed = Math.max(dt, 1 / 240);
-  pad.vx = (x - pad.x) / elapsed;
-  pad.vy = (y - pad.y) / elapsed;
+  const vx = (x - pad.x) / elapsed;
+  const vy = (y - pad.y) / elapsed;
+  // Cursor warps and low-frame-time samples must not launch an unbounded shot.
+  // Only the physics swipe velocity is bounded; position still follows directly.
+  const speed = Math.hypot(vx, vy);
+  const scale = speed > 24 ? 24 / speed : 1;
+  pad.vx = vx * scale;
+  pad.vy = vy * scale;
   pad.x = x;
   pad.y = y;
 }
