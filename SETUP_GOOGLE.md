@@ -15,3 +15,6 @@ Cloud save uses the **Google Identity Services token model** and Google Drive's 
      - `https://martindavies-code.github.io`
      - `http://localhost:8000`
 5. Copy the generated **Client ID** (`...apps.googleusercontent.com`) into `GOOGLE_CLIENT_ID` in `config.js`, then commit and push to `main`.
+
+## Configured state
+Dedicated project: perfect-day-pong. Web client: Perfect Day Pong web. External / Testing; Martin is a test user. Origins are https://martindavies-code.github.io and http://localhost:8000. The game requests drive.appdata only. Initial connection to an existing cloud save requires an explicit comparison choice. No billing enabled.

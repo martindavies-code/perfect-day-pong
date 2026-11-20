@@ -119,6 +119,13 @@ function persistSave() {
   saveLocalSave(saveDoc);
 }
 
+function persistSettingsChange() {
+  saveDoc.revision += 1;
+  saveDoc.updatedAt = new Date().toISOString();
+  persistSave();
+  cloud.scheduleDebouncedSync(() => saveDoc, handleCloudSyncResult);
+}
+
 // Persist the in-progress run at match boundaries so a refresh can resume it.
 function persistRunSnapshot() {
   if (runState && ['choose_opponent', 'playing', 'choose_pickup'].includes(runState.status)) {
@@ -1000,30 +1007,30 @@ function renderOverlay() {
     document.getElementById('set-sens').oninput = (e) => {
       st.mouseSensitivity = parseFloat(e.target.value);
       document.getElementById('val-sens').textContent = st.mouseSensitivity.toFixed(2);
-      persistSave();
+      persistSettingsChange();
     };
     document.getElementById('set-spatial').onchange = (e) => {
       st.spatialMode = e.target.value;
-      persistSave();
+      persistSettingsChange();
     };
     document.getElementById('set-qd').onchange = (e) => {
       st.quickDeuce = e.target.checked;
-      persistSave();
+      persistSettingsChange();
     };
     document.getElementById('set-master').oninput = (e) => {
       st.masterVolume = parseFloat(e.target.value);
       audio.applyVolumes();
-      persistSave();
+      persistSettingsChange();
     };
     document.getElementById('set-music').oninput = (e) => {
       st.musicVolume = parseFloat(e.target.value);
       audio.applyVolumes();
-      persistSave();
+      persistSettingsChange();
     };
     document.getElementById('set-sfx').oninput = (e) => {
       st.sfxVolume = parseFloat(e.target.value);
       audio.applyVolumes();
-      persistSave();
+      persistSettingsChange();
     };
     document.getElementById('btn-export-save').onclick = () => {
       triggerDownload('perfect-day-pong-save.json', exportSaveJson(saveDoc));
