@@ -631,15 +631,27 @@ function renderOverlay() {
     const unspent = computeUnspentPoints(saveDoc);
     const resumableRun = loadRunSnapshot();
     overlay.innerHTML = `
-      <div class="card">
-        <div class="card-header">
-          <div>
-            <span class="fac-cat">PDP 001</span>
+      <div class="card title-card">
+        <div class="title-sleeve">
+          <div class="sleeve-main">
+            <div class="sleeve-kicker">
+              <span class="fac-cat">PDP 001</span>
+              <span class="sleeve-meta">BBC / ROOM TEN ROGUELIKE</span>
+            </div>
             <h1>Perfect Day Pong</h1>
+            <p class="title-standfirst">Nine matches across three Acts. True 3D tennis-scored Pong haunted by late-night continuity.</p>
           </div>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">BBC / ROOM TEN ROGUELIKE</span>
+          <svg class="tx-clock" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+            <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <g stroke="currentColor" stroke-width="1.5">
+              <line x1="50" y1="10" x2="50" y2="4"/><line x1="70" y1="15.36" x2="73" y2="10.16"/><line x1="84.64" y1="30" x2="89.84" y2="27"/><line x1="90" y1="50" x2="96" y2="50"/><line x1="84.64" y1="70" x2="89.84" y2="73"/><line x1="70" y1="84.64" x2="73" y2="89.84"/><line x1="50" y1="90" x2="50" y2="96"/><line x1="30" y1="84.64" x2="27" y2="89.84"/><line x1="15.36" y1="70" x2="10.16" y2="73"/><line x1="10" y1="50" x2="4" y2="50"/><line x1="15.36" y1="30" x2="10.16" y2="27"/><line x1="30" y1="15.36" x2="27" y2="10.16"/>
+            </g>
+            <line x1="50" y1="50" x2="48.85" y2="28" stroke="currentColor" stroke-width="3" stroke-linecap="square"/>
+            <line x1="50" y1="50" x2="46.45" y2="16.2" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
+            <line class="tx-accent-stroke" x1="50" y1="56" x2="50" y2="6" stroke-width="1" stroke-linecap="square"/>
+            <circle class="tx-accent-fill" cx="50" cy="50" r="2.4"/>
+          </svg>
         </div>
-        <p>Nine matches across three Acts. True 3D tennis-scored Pong haunted by late-night continuity.</p>
         <p class="note-line persona">You play as John Birt, BBC Director-General 1992 to 2000. Cards marked SOURCED restate public record; SATIRE cards are invented jokes, not quotes.</p>
         <div class="stat-strip">
           <span>FEE POINTS: ${unspent}</span>
@@ -747,7 +759,7 @@ function renderOverlay() {
         <button class="choice-card btn-pick-opp" data-opp="${id}" type="button">
           <div class="choice-title">${opp.name}</div>
           <div class="choice-sub">${opp.vibe}</div>
-          <div style="font-family:var(--mono);font-size:11px;color:${actDef.accent}">SELECT OPPONENT →</div>
+          <div class="choice-cta" style="color:${actDef.accent}">SELECT OPPONENT →</div>
         </button>
       `;
     }).join('');
@@ -788,7 +800,7 @@ function renderOverlay() {
         <button class="choice-card btn-pick-up" data-pickup="${id}" type="button">
           <div class="choice-title">${p.name}</div>
           <div class="choice-sub">${p.desc}</div>
-          <div style="font-family:var(--mono);font-size:11px;color:var(--accent-2)">
+          <div class="choice-cta">
             ${id === 'extra_life' ? `LIVES: ${cur}/${runState.maxLives}` : `OWNED: ${cur}/${p.maxStacks}`}
           </div>
         </button>
