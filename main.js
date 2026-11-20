@@ -664,17 +664,17 @@ function renderOverlay() {
           <span>WINS: ${saveDoc.stats.runsWon}</span>
           <span>LOU REED BEATEN: ${saveDoc.stats.louReedWins}</span>
         </div>
-        <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
-        ${renderCloudBlockHtml()}
-        <p class="note-line">Pair Bluetooth controllers in Windows first, then press any button so the browser detects it.</p>
-        <p class="note-line">Headphones recommended for true 3D HRTF spatial ball &amp; impact cues.</p>
-        ${renderMechanicsHtml()}
         <div class="btn-row">
           <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
           ${resumableRun ? `<button class="primary" id="btn-continue-run" type="button">Continue Run (Match ${resumableRun.matchIndex + 1} / 9, ${resumableRun.lives} licence${resumableRun.lives === 1 ? '' : 's'} left)</button>` : ''}
           <button id="btn-upgrades" type="button">Licence Fee Review (${unspent} pts)</button>
           <button id="btn-open-settings" type="button">Settings &amp; Save</button>
         </div>
+        <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
+        ${renderCloudBlockHtml()}
+        <p class="note-line">Pair Bluetooth controllers in Windows first, then press any button so the browser detects it.</p>
+        <p class="note-line">Headphones recommended for true 3D HRTF spatial ball &amp; impact cues.</p>
+        ${renderMechanicsHtml()}
       </div>
     `;
     wireCloudButtons();
