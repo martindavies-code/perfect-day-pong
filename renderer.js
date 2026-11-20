@@ -10,6 +10,8 @@ export function createRenderer(canvas) {
   let height = 720;
   let dpr = 1;
 
+  let vignetteCanvas = null;
+
   function resize() {
     const rect = canvas.getBoundingClientRect();
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -18,6 +20,27 @@ export function createRenderer(canvas) {
     canvas.width = Math.floor(width * dpr);
     canvas.height = Math.floor(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    vignetteCanvas = null;
+  }
+
+  // Cached edge vignette: built once per resize, drawn under ball, bats and HUD.
+  function drawVignette() {
+    if (!vignetteCanvas) {
+      const vc = document.createElement('canvas');
+      vc.width = width;
+      vc.height = height;
+      const vctx = vc.getContext('2d');
+      const g = vctx.createRadialGradient(
+        width * 0.5, height * 0.5, Math.min(width, height) * 0.42,
+        width * 0.5, height * 0.5, Math.max(width, height) * 0.72
+      );
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.26)');
+      vctx.fillStyle = g;
+      vctx.fillRect(0, 0, width, height);
+      vignetteCanvas = vc;
+    }
+    ctx.drawImage(vignetteCanvas, 0, 0, width, height);
   }
 
   // Perspective camera behind player bat looking down +z
