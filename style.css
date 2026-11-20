@@ -270,7 +270,7 @@ html, body {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 18px;
+  margin: 14px 0 4px;
 }
 
 button, .btn {
@@ -626,7 +626,7 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
 }
 .sleeve-side {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 12px;
   flex: 0 0 auto;
@@ -644,7 +644,6 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
   width: 92px;
   height: 92px;
   color: var(--muted);
-  margin-top: 4px;
 }
 
 /* Stat strip: ruled cells, stronger numbers. */
@@ -738,6 +737,7 @@ button.primary:focus-visible {
     margin: -16px -18px 14px -18px;
   }
   .title-sleeve {
+    flex-wrap: wrap;
     gap: 14px;
     padding-bottom: 14px;
     margin-bottom: 14px;
