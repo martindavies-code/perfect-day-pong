@@ -248,6 +248,13 @@ try {
   // 5. Run start -> pick opponent -> reload -> Continue Run persists
   await evalJs(cdp, 'document.getElementById("btn-new-run").click()');
   await new Promise((r) => setTimeout(r, 200));
+  assert.equal(await evalJs(cdp, 'document.querySelectorAll(".route-node").length'), 9, 'Nine real route stages shown before play');
+  assert.ok(await evalJs(cdp, 'document.querySelector(".card").getBoundingClientRect().top >= document.getElementById("screen-overlay").getBoundingClientRect().top'), 'Tall route header must remain reachable');
+  await maybeShot(cdp, 'playtest-route-desktop.png');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 700, deviceScaleFactor: 1, mobile: false });
+  assert.equal(await evalJs(cdp, 'document.documentElement.scrollWidth > document.documentElement.clientWidth'), false);
+  await maybeShot(cdp, 'playtest-route-narrow.png');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await evalJs(cdp, 'document.querySelector(".btn-pick-opp").click()');
   await new Promise((r) => setTimeout(r, 250));
   assert.equal(await evalJs(cdp, 'document.getElementById("screen-overlay").classList.contains("hidden")'), true);
@@ -258,6 +265,21 @@ try {
   await evalJs(cdp, 'document.getElementById("btn-continue-run").click()');
   await new Promise((r) => setTimeout(r, 250));
   assert.equal(await evalJs(cdp, 'document.getElementById("status-hud")?.textContent'), '0 - 0');
+
+  // Stable HUD must not rebuild text/nodes while a point waits to be served.
+  const hudMutations = await evalJs(cdp, `new Promise(resolve => {
+    let mutations = 0, frames = 0;
+    const observer = new MutationObserver(records => mutations += records.length);
+    observer.observe(document.getElementById('hud-overlay'), {subtree:true, childList:true, characterData:true, attributes:true});
+    function next() { if (++frames < 12) requestAnimationFrame(next); else { observer.disconnect(); resolve(mutations); } }
+    requestAnimationFrame(next);
+  })`);
+  assert.equal(hudMutations, 0, 'No unchanged HUD rewrites across twelve animation frames');
+  assert.ok(await evalJs(cdp, 'parseFloat(getComputedStyle(document.getElementById("score-player")).fontSize) >= 36'), 'Score is prominent');
+  await maybeShot(cdp, 'playtest-score-desktop.png');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 700, deviceScaleFactor: 1, mobile: false });
+  await maybeShot(cdp, 'playtest-score-narrow.png');
+  assert.equal(await evalJs(cdp, 'document.documentElement.scrollWidth > document.documentElement.clientWidth'), false);
 
   // 6. OfflineAudioContext verification page
   await cdp.send('Page.navigate', { url: `${baseUrl}/tests/audio-test.html` });
