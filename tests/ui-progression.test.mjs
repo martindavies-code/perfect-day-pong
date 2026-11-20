@@ -255,9 +255,25 @@ try {
   assert.equal(await evalJs(cdp, 'document.documentElement.scrollWidth > document.documentElement.clientWidth'), false);
   await maybeShot(cdp, 'playtest-route-narrow.png');
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+  await evalJs(cdp, 'document.getElementById("screen-overlay").scrollTop = document.getElementById("screen-overlay").scrollHeight');
   await evalJs(cdp, 'document.querySelector(".btn-pick-opp").click()');
   await new Promise((r) => setTimeout(r, 250));
   assert.equal(await evalJs(cdp, 'document.getElementById("screen-overlay").classList.contains("hidden")'), true);
+  // A scrolled route must not carry its scroll offset into another screen.
+  await evalJs(cdp, 'document.getElementById("btn-settings").click()');
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal(await evalJs(cdp, 'document.getElementById("screen-overlay").scrollTop'), 0, 'Settings starts at top after leaving a scrolled route');
+  assert.ok(await evalJs(cdp, 'document.querySelector(".card-header").getBoundingClientRect().top >= document.getElementById("screen-overlay").getBoundingClientRect().top'), 'Settings heading remains reachable');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 700, deviceScaleFactor: 1, mobile: false });
+  await evalJs(cdp, 'document.getElementById("screen-overlay").scrollTop = document.getElementById("screen-overlay").scrollHeight');
+  await evalJs(cdp, 'document.getElementById("btn-settings-back").click()');
+  await evalJs(cdp, 'document.getElementById("btn-settings").click()');
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(await evalJs(cdp, 'document.getElementById("screen-overlay").scrollTop'), 0, 'Narrow settings also resets after hidden playing screen');
+  await maybeShot(cdp, 'playtest-settings-scroll-reset.png');
+  await evalJs(cdp, 'document.getElementById("btn-settings-back").click()');
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+
 
   await cdp.send('Page.reload');
   await new Promise((r) => setTimeout(r, 600));
