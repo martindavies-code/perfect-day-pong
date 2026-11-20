@@ -3,7 +3,7 @@
   --panel: #191b1f;
   --panel-alt: #22252b;
   --ink: #f4f2eb;
-  --muted: #9a9890;
+  --muted: #b6b4ab;
   --rule: #343840;
   --accent: #e0533c;
   --accent-2: #d4a84f;
@@ -253,7 +253,7 @@ html, body {
 
 .card p {
   color: var(--muted);
-  line-height: 1.45;
+  line-height: 1.5;
   margin: 8px 0;
   font-size: 14px;
 }
@@ -476,7 +476,7 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
 .route-node.past { opacity: .6; }
 .route-label { display: block; font: 10px var(--mono); color: var(--accent-2); margin-bottom: 4px; }
 .route-node strong, .route-node small { display: block; overflow-wrap: anywhere; }
-.route-node small { color: var(--muted); margin-top: 5px; font-size: 11px; }
+.route-node small { color: var(--muted); margin-top: 5px; font-size: 11px; line-height: 1.45; }
 .aim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
 .aim-grid strong { color: var(--accent-2); font: 12px var(--mono); }
 .mechanics-guide p { font-size: 12px; line-height: 1.5; }
