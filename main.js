@@ -1,3 +1,5 @@
+import { applyMouseSample, getScoreCall, getSpokenScoreCall, getRunRoute } from './playtest.js';
+import { createScoreAnnouncer } from './announcer.js';
 import {
   ROOM,
   TEMPOS,
@@ -74,6 +76,7 @@ const renderer = createRenderer(canvas);
 const input = createInputManager(canvas, () => saveDoc.settings);
 const audio = createAudioEngine(() => saveDoc.settings);
 const cloud = createCloudManager();
+const scoreAnnouncer = createScoreAnnouncer(() => saveDoc.settings, () => audio.isMuted());
 
 // Screens: 'title' | 'upgrades' | 'choose_opponent' | 'playing' | 'paused' | 'choose_pickup' | 'match_lost_life' | 'run_end' | 'settings' | 'conflict'
 let screen = 'title';
@@ -140,6 +143,7 @@ function persistRunSnapshot() {
 function resumeSavedRun() {
   const snap = loadRunSnapshot();
   if (!snap) return;
+  scoreAnnouncer.unlock();
   runState = snap;
   prevActSeen = 0; // force the act continuity ident to replay on resume
   charterReviewBanner = '';
@@ -269,6 +273,8 @@ function beginCurrentMatch() {
   };
 
   screen = 'playing';
+  matchState.announcer = `${getScoreCall(matchState.score)} Your serve.`;
+  scoreAnnouncer.say(getSpokenScoreCall(matchState.score));
   overlay.classList.add('hidden');
   audio.resetRally();
   syncAudioTrack();
@@ -278,6 +284,7 @@ function beginCurrentMatch() {
 function launchServe() {
   if (!matchState || matchState.phase !== 'awaiting_serve') return;
   const m = matchState;
+  scoreAnnouncer.cancel();
   const isPlayerServe = m.score.server === 'player';
   const deuceBoost = 1 + m.score.deuceCount * 0.06;
   const tempo = getTempoByIndex(m.tempoIndex);
@@ -311,7 +318,7 @@ function launchServe() {
     });
   }
   m.phase = 'rally';
-  m.announcer = formatTennisScore(m.score).announcerText;
+  m.announcer = getScoreCall(m.score);
   audio.resetRally();
   syncAudioTrack();
 }
@@ -371,65 +378,79 @@ function spawnParticles(x, y, z, color = '#e0533c', count = 10) {
   }
 }
 
+// Stable HUD values must not rebuild DOM on the animation hot path.
+const hudCache = new WeakMap();
+function writeHud(el, prop, value) {
+  let fields = hudCache.get(el);
+  if (!fields) { fields = {}; hudCache.set(el, fields); }
+  if (fields[prop] === value) return;
+  fields[prop] = value;
+  el[prop] = value;
+}
+function setHudText(el, value) { writeHud(el, 'textContent', value); }
+function setHudHtml(el, value) { writeHud(el, 'innerHTML', value); }
+function setHudStyle(el, prop, value) { writeHud(el.style, prop, value); }
+
 function updateHud() {
-  audioStatusEl.textContent = audio.isMuted()
+  setHudText(audioStatusEl, audio.isMuted()
     ? 'Sound: MUTED'
     : audio.isRunning()
       ? 'Sound: ON'
-      : 'Sound: Click / Press Key';
+      : 'Sound: Click / Press Key');
 
   if (runState) {
     const actDef = ACTS[Math.min(2, Math.floor(runState.matchIndex / 3))];
-    catBadge.textContent = `${actDef.prefix}0${runState.matchIndex + 1}`;
-    catBadge.style.color = actDef.accent;
-    catBadge.style.borderColor = actDef.accent;
-    topTitle.textContent = `${actDef.title} // MATCH ${Math.min(9, runState.matchIndex + 1)} OF 9`;
-    seedHud.textContent = `SEED: ${runState.seed}`;
+    setHudText(catBadge, `${actDef.prefix}0${runState.matchIndex + 1}`);
+    setHudStyle(catBadge, 'color', actDef.accent);
+    setHudStyle(catBadge, 'borderColor', actDef.accent);
+    setHudText(topTitle, `${actDef.title} // MATCH ${Math.min(9, runState.matchIndex + 1)} OF 9`);
+    setHudText(seedHud, `SEED: ${runState.seed}`);
 
     let icons = '';
     for (let i = 0; i < runState.maxLives; i++) {
       icons += `<span class="licence-icon ${i < runState.lives ? '' : 'lost'}" title="TV Licence"></span>`;
     }
-    livesHud.innerHTML = `LICENCES ${icons}`;
+    setHudHtml(livesHud, `LICENCES ${icons}`);
 
     const eff = getEffectivePickups(runState);
-    pickupsHud.innerHTML = Object.entries(eff)
+    setHudHtml(pickupsHud, Object.entries(eff)
       .filter(([, count]) => count > 0)
       .map(([id, count]) => `<span class="pickup-chip">${PICKUPS[id]?.short || id}${count > 1 ? 'x' + count : ''}</span>`)
-      .join('');
+      .join(''));
   } else {
-    catBadge.textContent = 'PDP 001';
-    catBadge.style.color = '';
-    catBadge.style.borderColor = '';
-    topTitle.textContent = 'BBC / ROOM TEN — CONTINUITY TRANSMISSION';
-    livesHud.innerHTML = `FEE PTS: ${computeUnspentPoints(saveDoc)}`;
-    pickupsHud.innerHTML = '';
-    seedHud.textContent = 'SEED: —';
+    setHudText(catBadge, 'PDP 001');
+    setHudStyle(catBadge, 'color', '');
+    setHudStyle(catBadge, 'borderColor', '');
+    setHudText(topTitle, 'BBC / ROOM TEN — CONTINUITY TRANSMISSION');
+    setHudHtml(livesHud, `FEE PTS: ${computeUnspentPoints(saveDoc)}`);
+    setHudHtml(pickupsHud, '');
+    setHudText(seedHud, 'SEED: —');
   }
 
   if (matchState) {
     const m = matchState;
     const fmt = formatTennisScore(m.score);
-    scorePlayerEl.textContent = fmt.playerLabel || '-';
-    scoreOppEl.textContent = fmt.opponentLabel || '-';
-    oppNameHud.innerHTML = `${m.oppDef.name.toUpperCase()} ${m.score.server === 'opponent' ? '<span id="srv-opp">*</span>' : ''}`;
-    document.getElementById('srv-player').textContent = m.score.server === 'player' ? '*' : '';
-    statusHud.textContent = fmt.statusText;
+    setHudText(scorePlayerEl, fmt.playerLabel || '-');
+    setHudText(scoreOppEl, fmt.opponentLabel || '-');
+    setHudHtml(oppNameHud, `${m.oppDef.name.toUpperCase()} ${m.score.server === 'opponent' ? '<span id="srv-opp">*</span>' : ''}`);
+    setHudText(document.getElementById('srv-player'), m.score.server === 'player' ? '*' : '');
+    const scoreCall = getScoreCall(m.score);
+    setHudText(statusHud, /Match point/.test(scoreCall) ? (scoreCall.includes('Match point, you') ? 'MATCH POINT: YOU' : 'MATCH POINT: OPPONENT') : fmt.statusText);
     const tempo = getTempoByIndex(m.tempoIndex);
-    tempoHud.textContent = `${tempo.label} // ${tempo.bpm} BPM`;
-    announcerHud.textContent = m.announcer;
-    abilityHud.textContent = String(m.tempoCharges);
+    setHudText(tempoHud, `${tempo.label} // ${tempo.bpm} BPM`);
+    setHudText(announcerHud, m.announcer);
+    setHudText(abilityHud, String(m.tempoCharges));
   }
 
   const method = input.getLastInputMethod();
   if (method === 'gamepad') {
-    controlsHint.textContent = 'PAD: STICK/D-PAD MOVE · A: SERVE · LB/RB: TEMPO · START: PAUSE';
+    setHudText(controlsHint, 'PAD: STICK/D-PAD MOVE · A: SERVE · LB/RB: TEMPO · START: PAUSE');
   } else if (method === 'keyboard') {
-    controlsHint.textContent = 'KEYS: WASD/ARROWS MOVE · SPACE: SERVE · Q/SHIFT: TEMPO · ESC: PAUSE · M: MUTE';
+    setHudText(controlsHint, 'KEYS: WASD/ARROWS MOVE · SPACE: SERVE · Q/SHIFT: TEMPO · ESC: PAUSE · M: MUTE');
   } else {
-    controlsHint.textContent = input.isPointerLocked()
+    setHudText(controlsHint, input.isPointerLocked()
       ? 'MOUSE (LOCKED): MOVE BAT · CLICK: SERVE · R-CLICK: TEMPO · ESC: PAUSE'
-      : 'MOUSE: MOVE BAT · CLICK: SERVE & LOCK · R-CLICK: TEMPO · ESC: PAUSE';
+      : 'MOUSE: MOVE BAT · CLICK: SERVE & LOCK · R-CLICK: TEMPO · ESC: PAUSE');
   }
 }
 
@@ -555,7 +576,22 @@ function wireCloudButtons() {
   }
 }
 
+function renderMechanicsHtml() {
+  return `<details class="mechanics-guide"><summary>Aiming, spin &amp; controls</summary>
+    <div class="aim-grid"><div><strong>AIM AT CONTACT</strong><p>Hit the right / left edge of your bat to send the ball right / left. Top / bottom changes its vertical launch. The centre gives a straighter return; gravity still pulls down.</p></div>
+    <div><strong>SWIPE FOR CURVE</strong><p>Moving the bat as it hits adds sideways / vertical speed and spin. Spin bends the flight and fades over time. A still edge hit also adds a smaller counter-curve. Curve Master increases spin by 35% per stack.</p></div></div>
+    <p>Mouse follows your latest position without easing. Click to serve and lock the pointer; Esc pauses and releases it. WASD / arrows or a gamepad also work. Q / Shift or right-click slows the tempo while charges remain. Bat-speed upgrades affect keys / gamepad, not direct mouse tracking.</p>
+    <p>Scores read YOU first, opponent second. Win four points with a two-point lead; Quick Deuce can add a deciding point. Voice is optional and never holds up a serve.</p></details>`;
+}
+function renderRouteHtml() {
+  const nodes = getRunRoute(runState);
+  return `<details class="run-route" open><summary>Your run route · ${runState.seed}</summary>
+    <p class="route-key">Choose one branch at each split. Future pairs are drawn later from the remaining Act pool, using the seed plus your opponent and pickup choices. They are not a fixed advance list.</p>
+    <div class="route-acts">${[1, 2, 3].map(act => `<section><h3>ACT ${act}</h3><ol>${nodes.filter(n => n.act === act).map(n => `<li class="route-node ${n.current ? 'current' : ''} ${n.past ? 'past' : ''}"><span class="route-label">${n.index + 1} · ${n.past ? 'PLAYED' : n.current ? 'NEXT' : n.type === 'fixed' ? 'FIXED' : 'BRANCH'}</span><strong>${n.type === 'pool' ? 'Choose 1 of 2' : n.names.join(' / ')}</strong>${n.type === 'pool' ? `<small>Possible: ${n.names.join(', ')}</small>` : ''}</li>`).join('')}</ol></section>`).join('')}</div></details>`;
+}
+
 function renderOverlay() {
+  if (screen !== 'playing') scoreAnnouncer.cancel();
   updateHud();
   choiceLocked = false;
   if (screen === 'playing') {
@@ -588,6 +624,7 @@ function renderOverlay() {
         ${renderCloudBlockHtml()}
         <p class="note-line">Pair Bluetooth controllers in Windows first, then press any button so the browser detects it.</p>
         <p class="note-line">Headphones recommended for true 3D HRTF spatial ball &amp; impact cues.</p>
+        ${renderMechanicsHtml()}
         <div class="btn-row">
           <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
           ${resumableRun ? `<button class="primary" id="btn-continue-run" type="button">Continue Run (Match ${resumableRun.matchIndex + 1} / 9, ${resumableRun.lives} licence${resumableRun.lives === 1 ? '' : 's'} left)</button>` : ''}
@@ -599,6 +636,7 @@ function renderOverlay() {
     wireCloudButtons();
     document.getElementById('btn-new-run').onclick = () => {
       audio.unlockFromGesture();
+      scoreAnnouncer.unlock();
       startNewRun();
     };
     const btnContinue = document.getElementById('btn-continue-run');
@@ -698,6 +736,8 @@ function renderOverlay() {
           <span style="font-family:var(--mono);font-size:12px">MATCH ${runState.matchIndex + 1} / 9</span>
         </div>
         <div class="interstitial-box">“${lastInterstitial.text}”</div>
+        ${renderRouteHtml()}
+        ${renderMechanicsHtml()}
         <p>Select the next artist on the running order.</p>
         <div class="choice-grid">${choicesHtml}</div>
       </div>
@@ -707,6 +747,7 @@ function renderOverlay() {
         if (choiceLocked) return;
         choiceLocked = true;
         audio.unlockFromGesture();
+        scoreAnnouncer.unlock();
         pickOpponent(runState, btn.dataset.opp);
         persistRunSnapshot();
         beginCurrentMatch();
@@ -935,6 +976,11 @@ function renderOverlay() {
           </select>
         </div>
         <div class="setting-row">
+          <label for="set-announcer">Robotic score voice (installed voice only)</label>
+          <input id="set-announcer" type="checkbox" ${st.announcerEnabled !== false ? 'checked' : ''} />
+        </div>
+        <p class="note-line">${scoreAnnouncer.status()}</p>
+        <div class="setting-row">
           <label for="set-qd">Quick Deuce (3rd deuce decides)</label>
           <input id="set-qd" type="checkbox" ${st.quickDeuce ? 'checked' : ''} />
         </div>
@@ -969,6 +1015,11 @@ function renderOverlay() {
     };
     document.getElementById('set-spatial').onchange = (e) => {
       st.spatialMode = e.target.value;
+      persistSettingsChange();
+    };
+    document.getElementById('set-announcer').onchange = (e) => {
+      st.announcerEnabled = e.target.checked;
+      scoreAnnouncer.cancel();
       persistSettingsChange();
     };
     document.getElementById('set-qd').onchange = (e) => {
@@ -1048,6 +1099,7 @@ function renderOverlay() {
 input.on('gesture', () => { audio.unlockFromGesture(); });
 input.on('mute', () => {
   audio.toggleMute();
+  scoreAnnouncer.cancel();
   updateHud();
 });
 input.on('pause', () => {
@@ -1097,6 +1149,7 @@ input.on('back', () => {
     renderOverlay();
   }
 });
+input.on('gesture', () => scoreAnnouncer.unlock());
 input.on('confirm', () => {
   if (screen !== 'playing') {
     // Only trigger via keyboard/gamepad confirm; mouse clicks already fire button onclick directly
@@ -1121,6 +1174,7 @@ input.on('ability', () => useTempoControl());
 btnMute.onclick = () => {
   audio.unlockFromGesture();
   audio.toggleMute();
+  scoreAnnouncer.cancel();
   updateHud();
 };
 btnSettings.onclick = () => {
@@ -1159,27 +1213,17 @@ function stepFixed(dt, inp) {
   m.elapsed += dt;
 
   const pad = m.playerPaddle;
-  pad.prevX = pad.x;
-  pad.prevY = pad.y;
-  const maxX = ROOM.halfW - pad.width * 0.5;
-  const maxY = ROOM.halfH - pad.height * 0.5;
-
-  if (inp.mode === 'absolute') {
-    const tx = inp.targetNormX * maxX;
-    const ty = inp.targetNormY * maxY;
-    const alpha = 1 - Math.exp(-36 * dt);
-    pad.x += (tx - pad.x) * alpha;
-    pad.y += (ty - pad.y) * alpha;
-  } else {
+  if (inp.mode !== 'absolute') {
+    pad.prevX = pad.x;
+    pad.prevY = pad.y;
     const moveSpeed = 10.5 * m.playerSpeedMult;
     pad.x += inp.velX * moveSpeed * dt;
     pad.y += inp.velY * moveSpeed * dt;
     clampPaddle(pad, ROOM);
-    input.setVirtualCursor(pad.x / Math.max(0.1, maxX), pad.y / Math.max(0.1, maxY));
+    pad.vx = (pad.x - pad.prevX) / dt;
+    pad.vy = (pad.y - pad.prevY) / dt;
+    input.setVirtualCursor(pad.x / Math.max(0.1, ROOM.halfW - pad.width * 0.5), pad.y / Math.max(0.1, ROOM.halfH - pad.height * 0.5));
   }
-  clampPaddle(pad, ROOM);
-  pad.vx = (pad.x - pad.prevX) / dt;
-  pad.vy = (pad.y - pad.prevY) / dt;
 
   if (m.oppDef.id === 'heather_small') {
     const fatigue = Math.max(0.75, 1 - m.score.pointNumber * 0.035);
@@ -1247,9 +1291,7 @@ function stepFixed(dt, inp) {
         m.phase = 'awaiting_serve';
         m.serveAutoTimer = 0.85;
         m.ball = createBall({ x: 0, y: 0.2, z: m.score.server === 'player' ? 0.8 : ROOM.opponentZ - 0.8, vz: 0 });
-        m.announcer = m.score.server === 'player'
-          ? 'Your serve. Click or press A / Space.'
-          : `${m.oppDef.name} serving...`;
+        m.announcer = `${getScoreCall(m.score)} ${m.score.server === 'player' ? 'Your serve.' : 'Opponent serving.'}`;
       }
     }
   } else if (m.phase === 'rally') {
@@ -1309,14 +1351,15 @@ function stepFixed(dt, inp) {
     if (scoredBy) {
       if (scoredBy === 'opponent' && m.secondChanceLeft > 0) {
         m.secondChanceLeft -= 1;
-        m.announcer = 'Second Chance! Point replayed.';
+        m.announcer = `Second Chance! Point replayed. ${getScoreCall(m.score)}`;
+        scoreAnnouncer.say(getSpokenScoreCall(m.score));
         m.phase = 'awaiting_serve';
         m.serveAutoTimer = 0.85;
         m.ball = createBall({ x: 0, y: 0.2, z: m.score.server === 'player' ? 0.8 : ROOM.opponentZ - 0.8, vz: 0 });
       } else {
         m.score = scorePoint(m.score, scoredBy);
-        const fmt = formatTennisScore(m.score);
-        m.announcer = fmt.announcerText;
+        m.announcer = getScoreCall(m.score);
+        scoreAnnouncer.say(getSpokenScoreCall(m.score));
         m.phase = 'point_pause';
         m.phaseTimer = 1.0;
         m.tempoIndex = Math.min(TEMPOS.length - 1, (m.oppDef.act === 3 ? 2 : 1) + Math.floor(m.score.deuceCount / 2));
@@ -1359,11 +1402,12 @@ function frame(now) {
   const clampedDt = Math.min(rawDt, 0.05);
 
   const inp = input.update(clampedDt);
-  padHint.textContent = inp.padConnected
+  setHudText(padHint, inp.padConnected
     ? `PAD: CONNECTED (${inp.padId.slice(0, 22)})`
-    : 'PAD: NOT DETECTED';
+    : 'PAD: NOT DETECTED');
 
   if (screen === 'playing' && matchState) {
+    if (inp.mode === 'absolute') applyMouseSample(matchState.playerPaddle, inp, clampedDt);
     accumulator += clampedDt;
     while (accumulator >= FIXED_DT) {
       stepFixed(FIXED_DT, inp);

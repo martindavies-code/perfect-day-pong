@@ -19,6 +19,8 @@ export function createInputManager(canvas, getSettings) {
   let padDisconnectedMidMatch = false;
   let stickNavLatchX = 0;
   let stickNavLatchY = 0;
+  let previousPadX = 0;
+  let previousPadY = 0;
 
   // Action edge queue
   const pendingActions = new Set();
@@ -98,6 +100,15 @@ export function createInputManager(canvas, getSettings) {
     keys.delete(e.code);
   }
 
+  // Layout is stable between resizes/scrolls. Do not force layout on every
+  // high-frequency mouse event, especially immediately before a paddle hit.
+  let canvasRect = canvas.getBoundingClientRect();
+  function refreshCanvasRect() { canvasRect = canvas.getBoundingClientRect(); }
+  const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refreshCanvasRect) : null;
+  resizeObserver?.observe(canvas);
+  window.addEventListener('resize', refreshCanvasRect);
+  window.addEventListener('scroll', refreshCanvasRect, true);
+
   function onMouseMove(e) {
     lastInputMethod = 'mouse';
     mouseDeltaMoved = true;
@@ -107,7 +118,7 @@ export function createInputManager(canvas, getSettings) {
       virtualMouseX = Math.max(-1, Math.min(1, virtualMouseX + e.movementX * scale));
       virtualMouseY = Math.max(-1, Math.min(1, virtualMouseY - e.movementY * scale));
     } else {
-      const rect = canvas.getBoundingClientRect();
+      const rect = canvasRect;
       if (rect.width > 0 && rect.height > 0) {
         const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
@@ -153,6 +164,8 @@ export function createInputManager(canvas, getSettings) {
       prevButtons = [];
       stickNavLatchX = 0;
       stickNavLatchY = 0;
+      previousPadX = 0;
+      previousPadY = 0;
       padDisconnectedMidMatch = true;
       emit('padDisconnect');
     }
@@ -249,7 +262,14 @@ export function createInputManager(canvas, getSettings) {
     if (pressedNow[12]) ay = 1;
     if (pressedNow[13]) ay = -1;
 
-    if (Math.abs(ax) > 0 || Math.abs(ay) > 0) {
+    // A held stick is not a fresh input event. Otherwise a connected pad can
+    // steal control from every mouse sample and make the bat appear to stutter.
+    const freshAxis = Math.abs(ax - previousPadX) > 0.08 || Math.abs(ay - previousPadY) > 0.08;
+    if (freshAxis || (ax === 0 && ay === 0)) {
+      previousPadX = ax;
+      previousPadY = ay;
+    }
+    if (freshAxis && (ax !== 0 || ay !== 0) && !mouseDeltaMoved) {
       lastInputMethod = 'gamepad';
     }
 
@@ -341,6 +361,9 @@ export function createInputManager(canvas, getSettings) {
   }
 
   function destroy() {
+    resizeObserver?.disconnect();
+    window.removeEventListener('resize', refreshCanvasRect);
+    window.removeEventListener('scroll', refreshCanvasRect, true);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     canvas.removeEventListener('mousemove', onMouseMove);
