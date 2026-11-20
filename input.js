@@ -17,6 +17,8 @@ export function createInputManager(canvas, getSettings) {
   let activePadIndex = null;
   let prevButtons = [];
   let padDisconnectedMidMatch = false;
+  let stickNavLatchX = 0;
+  let stickNavLatchY = 0;
 
   // Action edge queue
   const pendingActions = new Set();
@@ -26,6 +28,7 @@ export function createInputManager(canvas, getSettings) {
     confirm: [],
     back: [],
     ability: [],
+    nav: [],
     padDisconnect: [],
     gesture: [],
   };
@@ -48,7 +51,10 @@ export function createInputManager(canvas, getSettings) {
   function onKeyDown(e) {
     emit('gesture');
     const code = e.code;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(code)) {
+    if (
+      ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(code) ||
+      (code === 'Enter' && e.target?.tagName !== 'INPUT' && e.target?.tagName !== 'SELECT')
+    ) {
       e.preventDefault();
     }
     const firstPress = !keys.has(code);
@@ -73,6 +79,14 @@ export function createInputManager(canvas, getSettings) {
       lastInputMethod = 'keyboard';
       emit('confirm');
       pendingActions.add('confirm');
+    } else if (code === 'ArrowUp' || code === 'KeyW') {
+      emit('nav', 'up');
+    } else if (code === 'ArrowDown' || code === 'KeyS') {
+      emit('nav', 'down');
+    } else if (code === 'ArrowLeft' || code === 'KeyA') {
+      emit('nav', 'left');
+    } else if (code === 'ArrowRight' || code === 'KeyD') {
+      emit('nav', 'right');
     } else if (code === 'KeyQ' || code === 'KeyE' || code === 'ShiftLeft' || code === 'ShiftRight') {
       lastInputMethod = 'keyboard';
       emit('ability');
@@ -129,17 +143,16 @@ export function createInputManager(canvas, getSettings) {
     pointerLocked = false;
   }
 
-  function onGamepadConnected(e) {
-    if (activePadIndex === null) {
-      activePadIndex = e.gamepad.index;
-      prevButtons = [];
-    }
+  function onGamepadConnected() {
+    // First-pressed pad wins (do not claim activePadIndex until a button/axis is pressed)
   }
 
   function onGamepadDisconnected(e) {
     if (e.gamepad.index === activePadIndex) {
       activePadIndex = null;
       prevButtons = [];
+      stickNavLatchX = 0;
+      stickNavLatchY = 0;
       padDisconnectedMidMatch = true;
       emit('padDisconnect');
     }
@@ -240,11 +253,23 @@ export function createInputManager(canvas, getSettings) {
       lastInputMethod = 'gamepad';
     }
 
-    // Menu navigation edge triggers on d-pad / stick
+    // Menu navigation edge triggers on d-pad and left stick
     const navUp = justPressed(12);
     const navDown = justPressed(13);
     const navLeft = justPressed(14);
     const navRight = justPressed(15);
+
+    const sxRaw = pad.axes?.[0] ?? 0;
+    const syRaw = pad.axes?.[1] ?? 0;
+    const sxDir = sxRaw > 0.55 ? 1 : sxRaw < -0.55 ? -1 : 0;
+    const syDir = syRaw > 0.55 ? 1 : syRaw < -0.55 ? -1 : 0;
+
+    if (navUp || (syDir === -1 && stickNavLatchY !== -1)) emit('nav', 'up');
+    if (navDown || (syDir === 1 && stickNavLatchY !== 1)) emit('nav', 'down');
+    if (navLeft || (sxDir === -1 && stickNavLatchX !== -1)) emit('nav', 'left');
+    if (navRight || (sxDir === 1 && stickNavLatchX !== 1)) emit('nav', 'right');
+    stickNavLatchX = sxDir;
+    stickNavLatchY = syDir;
 
     prevButtons = pressedNow;
     return { ax, ay, navUp, navDown, navLeft, navRight, id: pad.id };

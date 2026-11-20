@@ -271,6 +271,27 @@ function playSequence(seq, opts = {}) {
   assert.ok(fp >= 9 * 10 + 38 + 2 * 5 + 50, `Unexpected Fee Points total: ${fp}`);
 }
 
+// Pickup offer never empty even when all pickups maxed and lives == 5
+{
+  const run = createRunState({ seed: 'FULL-MAX', upgradeLevels: { startLives: 2 } });
+  run.pickups = {
+    bat_size: 3,
+    bat_speed: 3,
+    tempo_control: 3,
+    curve_master: 2,
+    shadow_sight: 2,
+    second_chance: 1,
+    sticky_bat: 1,
+  };
+  run.lives = 5;
+  pickOpponent(run, run.offeredOpponents[0]);
+  recordMatchResult(run, { won: true, playerPointsScored: 4 });
+  assert.ok(run.offeredPickups.length >= 1, 'Pickup offer must never be empty');
+  assert.equal(run.offeredPickups[0], 'fee_grant');
+  choosePickup(run, 'fee_grant');
+  assert.equal(run.pickupFeeBonus, 15);
+}
+
 // Lou Reed phases by scoreline
 {
   let s = createMatchScore();
@@ -298,9 +319,12 @@ function playSequence(seq, opts = {}) {
   const tooExpensive = purchaseUpgrade(save, 'startLives'); // costs 40, only 35 left
   assert.equal(tooExpensive.ok, false);
 
-  // Strict import rejects unknown keys and negative unspent balance
+  // Strict import rejects unknown keys, future schemaVersion, and negative unspent balance
   const badKey = validateAndSanitizeSave({ totalEarned: 100, bogus: 1 }, { strict: true });
   assert.equal(badKey.ok, false);
+
+  const badVer = validateAndSanitizeSave({ schemaVersion: 99, totalEarned: 10 }, { strict: true });
+  assert.equal(badVer.ok, false);
 
   const badNeg = validateAndSanitizeSave(
     { totalEarned: 5, upgradeLevels: { startBatSize: 3 } },
