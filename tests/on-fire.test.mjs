@@ -11,6 +11,7 @@ import {
   timedStrikeContact,
   timedStrikeFrame,
   timedStrikeReset,
+  timedStrikePointEnd,
   isOnFire,
   timedStrikeBoost,
   TIMED_STRIKE_WINDOW,
@@ -18,6 +19,7 @@ import {
   ON_FIRE_STREAK,
   ON_FIRE_DURATION,
   ON_FIRE_BOOST,
+  applyLateBoost,
 } from '../logic.js';
 
 let failures = 0;
@@ -67,9 +69,30 @@ function ok(cond, name) {
   timedStrikeClick(ts2, 100.0); // far from any contact; fire ends at sweep
   timedStrikeFrame(ts2, 100.0 + TIMED_STRIKE_WINDOW + 0.001);
   ok(!isOnFire(ts2, 100.2) && ts2.streak === 0, 'mistimed click extinguishes ON FIRE');
-  // Reset clears everything (point end).
+  // Reset clears everything (full reset helper).
   timedStrikeReset(ts2);
-  ok(ts2.streak === 0 && ts2.lastClickAt === null && ts2.onFireUntil === 0, 'point-end reset clears state');
+  ok(ts2.streak === 0 && ts2.lastClickAt === null && ts2.onFireUntil === 0, 'full reset clears state');
+}
+
+{
+  // Point end semantics (NBA Jam three-in-a-row): a building streak SURVIVES
+  // the point ending; only mistimed clicks cost it. A lit fire ends at the
+  // point end and takes the streak with it, like its time-out does.
+  const ts = createTimedStrikeState();
+  timedStrikeClick(ts, 1.0); timedStrikeContact(ts, 1.05);
+  timedStrikeClick(ts, 3.0); timedStrikeContact(ts, 3.05);
+  ok(ts.streak === 2 && !isOnFire(ts, 3.1), 'setup: streak 2, not lit');
+  timedStrikePointEnd(ts);
+  ok(ts.streak === 2 && ts.lastClickAt === null && ts.lastContactAt === null, 'building streak survives the point ending');
+  timedStrikeClick(ts, 6.0); timedStrikeContact(ts, 6.05);
+  ok(isOnFire(ts, 6.1), 'third timed strike after the point break lights ON FIRE');
+  timedStrikePointEnd(ts);
+  ok(!isOnFire(ts, 6.2) && ts.streak === 0, 'point ending puts the fire out and takes the lit streak');
+  // A parked (pre-contact) click is cleared at the point end, not judged.
+  const ts3 = createTimedStrikeState();
+  timedStrikeClick(ts3, 2.0);
+  timedStrikePointEnd(ts3);
+  ok(ts3.lastClickAt === null && ts3.streak === 0, 'parked click cleared at point end, streak untouched');
 }
 
 {
@@ -155,6 +178,60 @@ function runExchanges({ clickEvery = 1, exchanges = 6, boost = null, maxZSpeed =
   ok(noClick.contacts.length === 4, 'no-click rally still returns normally');
   ok(noClick.ts.streak === 0 && noClick.ts.timedHits === 0 && noClick.ts.activations === 0, 'no clicks: no streak, no fire, returns unaffected');
   ok(noClick.contacts.every((c) => !c.res.timed && !c.res.mistimed), 'no-click contacts are clean normal returns');
+}
+
+
+// --- Late-click boost on the outgoing ball ----------------------------------
+{
+  // Accepted late click (contact just happened) -> late:true, streak counts.
+  const ts = createTimedStrikeState();
+  timedStrikeContact(ts, 10.0);                 // contact, no click parked
+  const res = timedStrikeClick(ts, 10.0 + TIMED_STRIKE_WINDOW * 0.6);
+  ok(res.timed && res.late === true && ts.streak === 1, 'late in-window click is accepted and flagged late');
+  // Once only: another click cannot re-resolve the same contact.
+  const again = timedStrikeClick(ts, 10.0 + TIMED_STRIKE_WINDOW * 0.7);
+  ok(!again.timed && !again.late && ts.streak === 1, 'same contact cannot be resolved twice');
+}
+
+{
+  // applyLateBoost: scales the outgoing ball by the factor, clamped.
+  const ball = createBall({ x: 0, y: 0, z: 1, vx: 2, vy: 0.5, vz: 20 });
+  const before = Math.hypot(ball.vx, ball.vy, ball.vz);
+  const applied = applyLateBoost(ball, TIMED_STRIKE_BOOST, 28);
+  const after = Math.hypot(ball.vx, ball.vy, ball.vz);
+  ok(applied && Math.abs(after - before * TIMED_STRIKE_BOOST) < 1e-9, 'late boost scales the outgoing ball by the timed factor');
+  // Clamped at max speed.
+  const hot = createBall({ x: 0, y: 0, z: 1, vx: 0, vy: 0, vz: 27.5 });
+  applyLateBoost(hot, TIMED_STRIKE_BOOST, 28);
+  ok(Math.hypot(hot.vx, hot.vy, hot.vz) <= 28 + 1e-9, 'late boost never exceeds the speed clamp');
+  // No effect on an incoming or stopped ball: no other ball, no wrong flight.
+  const incoming = createBall({ x: 0, y: 0, z: 5, vx: 0, vy: 0, vz: -20 });
+  ok(applyLateBoost(incoming, TIMED_STRIKE_BOOST, 28) === false && incoming.vz === -20, 'late boost refuses an incoming ball');
+  // Re-boosting an already-clamped ball never pushes it past the clamp.
+  applyLateBoost(hot, TIMED_STRIKE_BOOST, 28);
+  ok(Math.hypot(hot.vx, hot.vy, hot.vz) <= 28 + 1e-9, 're-boosting a clamped ball stays clamped');
+}
+
+{
+  // Input spam gives no advantage: extra clicks park, expire as mistimed, and
+  // cost the streak instead of building it.
+  const ts = createTimedStrikeState();
+  timedStrikeClick(ts, 1.00);
+  timedStrikeContact(ts, 1.05); // timed, streak 1
+  for (let i = 0; i < 5; i++) timedStrikeClick(ts, 2.0 + i * 0.03); // spam: each replaces the last parked click
+  const sweep = timedStrikeFrame(ts, 2.12 + TIMED_STRIKE_WINDOW + 0.01);
+  ok(sweep.mistimed && ts.streak === 0 && ts.timedHits === 1, 'click spam cannot farm streaks; it burns them');
+}
+
+// Full-window truth: pre-contact clicks boost at contact (via timedStrikeBoost
+// passed to physics); late clicks boost the outgoing ball via applyLateBoost.
+// Both are clamped to the same max speed.
+{
+  const ts = createTimedStrikeState();
+  timedStrikeClick(ts, 3.0);
+  ok(timedStrikeBoost(ts, 3.05) === TIMED_STRIKE_BOOST, 'pre-contact half of the window boosts at contact');
+  const ball = createBall({ x: 0, y: 0, z: 1, vx: 0, vy: 0, vz: 18 });
+  ok(applyLateBoost(ball, TIMED_STRIKE_BOOST, 28), 'late half of the window boosts the outgoing ball');
 }
 
 console.log(failures ? `${failures} FAILURES` : 'all on-fire tests passed');
