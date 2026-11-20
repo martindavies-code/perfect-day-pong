@@ -1,31 +1,28 @@
-# HANDOVER.md — Perfect Day Pong
+# HANDOVER: pull current main before any further edits
 
-- **Status / Step**: Step 8 complete (independent-review fixes: upgrade feedback, mid-run resume, narrow-screen polish, deterministic win-path test).
-- **Live URL**: `https://martindavies-code.github.io/perfect-day-pong/`
-- **How to run / test**: `python -m http.server 8000` -> `http://localhost:8000`. Tests: `npm test` (unit suite + deterministic full-run win-path simulation). Audio test: `tests/audio-test.html`.
-- **What works**:
-  - True 3D `(x,y,z)` physics, swept bat collision, spin, 5 depth cues, mouse (pointer lock + fallback)/gamepad/keyboard, finite AI (`>=110ms`).
-  - 9-match run across 3 Acts, 16 opponents (Choir/Quartet/Boyzone/Piano/Bowie/Bono/Lou 3 phases + Borrowed Time), 8 pickups, 6 upgrades, Fee Points.
-  - Factory look, 24 tagged BBC interstitial cards, Charter review bars, layered Detroit house + 3D HRTF/Stereo spatial audio.
-  - `localStorage` save, Export/Import (256 KB cap, strict validation, backups), 2-click Reset, Google Drive `appDataFolder` + conflict UI.
-  - **Mid-run resume**: run state snapshots to `localStorage` at every match boundary (opponent pick, match end, pickup). The title screen offers "Continue Run" after an interrupted run. Resuming a fixture restarts that match at 0-0; licences, pickups, Fee Points and match index are preserved. Reset Progress and Import clear the interrupted run.
-  - **Upgrade feedback**: an unaffordable BUY click now shows the reason and your unspent points instead of silently doing nothing.
-- **Step 8 fixes (independent review)**:
-  1. Insufficient-funds BUY was a silent no-op (button disabled) -> clickable with on-screen reason.
-  2. 480px title card: hazard stripe margins, wrapping header, smaller h1 (badge overlap and clipped subtitle fixed).
-  3. Mid-run progress was lost on refresh -> run snapshot + Continue Run (above).
-  4. Reported stale "N licences remaining" message: investigated; message and licence indicator render from the same `runState.lives` in the same pass, so a durable mismatch is not possible in code. Not reproduced; treated as a transient artifact of automated clicking during review.
-- **Verified in Step 8**:
-  - `node tests/winpath.sim.mjs`: deterministic full 9-match win with real rally physics (scripted capped-speed player vs each opponent's real AI): route completes, fixed bosses (Bono, Elton, Bowie, Lou) on route, Lou reaches phase 2+, run won, fee points awarded.
-  - Unit suite re-run green; narrow-viewport and Continue Run flow checked live after publish.
-- **Still only verified by code/tests (not hardware)**:
-  - Physical Bluetooth/USB gamepad behaviour and two-controller claim order.
-  - Subjective audio mix through headphones (spatial direction and levels are machine-verified via `tests/audio-test.html`; taste is not).
-- **Known issues**:
-  - Cloud save read-before-write is not atomic across two simultaneous devices (v1 assumes one active session; revision check + backups mitigate).
-  - Google OAuth Web Client ID is unset (`config.js`) until the Google Cloud project setup is completed (console path verified available).
-- **Next 3 steps**:
-  1. Complete Google cloud-save setup (dedicated GCP project, Web OAuth client, paste ID into `config.js`).
-  2. Optional: human playthrough for feel/balance tuning.
-  3. Optional: physical controller check.
-- **Decisions**: Vanilla ES modules + Canvas 2D 3D projection + Web Audio; zero build step; relative paths throughout.
+The GitHub main branch is ahead of the original AG dev checkout and Drive snapshot. Do not push the old dev checkout over main. Fetch/pull main, reconcile local changes, and refresh the shared source snapshot before editing.
+
+## Current state
+- Live game: https://martindavies-code.github.io/perfect-day-pong/
+- Local: serve the repo with a static HTTP server. Run npm test for unit, qualified physics-route simulation, and cloud safety regressions.
+- Review fixes: unaffordable-upgrade explanation; run-boundary local snapshots and Continue Run; narrow overlay top alignment and wrapped title.
+- Continue Run preserves licences, pickups and fixture position, restarting the interrupted fixture at 0-0. It is local to the device, not part of the cloud career save.
+- Google project perfect-day-pong is configured, Drive API enabled, External/Testing, owner added as test user. Web client and exact origins are in config.js / SETUP_GOOGLE.md. No billing was enabled and the unrelated Deck Order project was not changed.
+- Actual appDataFolder write and HTTP 200 JSON readback were verified. The game's remote-pull path was verified with a temporary test marker, then the cloud test data was restored to zero stats and Quick Deuce off.
+
+## Cloud safety fix
+- Existing cloud save plus no shared sync baseline now always opens the comparison screen. Neither side is overwritten without the user's selection, even when this device has default progress.
+- Settings changes advance revision and schedule a debounced sync.
+- Regression tests cover fresh and nonempty local saves without metadata, absent cloud, settings-style revision/sync, and backups before either conflict choice.
+- Read-before-write is still not atomic: use one active session at a time.
+
+## Verification and limits
+- Live title, game loop, loss/retry/game-over, settings, local resume, and 480px layout inspected.
+- Spatial audio OfflineAudioContext tests: 7/7 passed. Subjective headphone mix and physical controllers were not tested.
+- Seeded Node physics simulation covers a nine-match route, but approximates special formations and some boss mechanics with a single paddle. It is not proof of full special-mechanic beatability.
+- Isolated Chromium UI test used an otherwise unchanged copy with test-only state access and forced match finishes appended. Real opponent/pickup buttons, all three Acts, automatic fixed bosses, Lou, finale, fee award, and persisted victory stats passed. No production debug hooks were added. This verifies UI transitions, not real-time victory against every special mechanic.
+- Only browser resource errors in that UI test were missing favicon.ico (404), not game JavaScript errors.
+
+## Remaining work
+- Refresh the shared Drive source snapshot from this main branch before AG resumes.
+- Real-time balance/feel and hardware checks remain optional tuning, not a prerequisite for the verified save/layout fixes.
