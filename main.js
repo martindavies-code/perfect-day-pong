@@ -23,9 +23,13 @@ import {
   timedStrikeClick,
   timedStrikeContact,
   timedStrikeFrame,
-  timedStrikeReset,
+  timedStrikePointEnd,
   isOnFire,
   timedStrikeBoost,
+  applyLateBoost,
+  TIMED_STRIKE_WINDOW,
+  TIMED_STRIKE_BOOST,
+  ON_FIRE_BOOST,
   createAIState,
   stepAI,
   mulberry32,
@@ -101,6 +105,17 @@ function updateOnFireHud(m) {
   if (show === onFireShown) return;
   onFireShown = show;
   onFireHud.hidden = !show;
+}
+
+const streakHud = document.getElementById('streak-hud');
+let streakShown = -1;
+function updateStreakHud(m) {
+  if (!streakHud) return;
+  const n = m && m.timed ? Math.min(3, m.timed.streak) : 0;
+  if (n === streakShown) return;
+  streakShown = n;
+  const pips = streakHud.children;
+  for (let i = 0; i < pips.length; i++) pips[i].className = i < n ? 'lit' : '';
 }
 
 const pickupsHud = document.getElementById('pickups-hud');
@@ -497,6 +512,7 @@ function updateHud() {
     setHudText(announcerHud, m.announcer);
     updateSpeedGauge(m);
     updateOnFireHud(m);
+    updateStreakHud(m);
   }
 
   const method = input.getLastInputMethod();
@@ -1279,6 +1295,11 @@ input.on('back', () => {
     renderOverlay();
   }
 });
+// Honour prefers-reduced-motion for the canvas-side impact feedback: no
+// screen shake, and smaller, dimmer timed-strike flashes/bursts. HUD CSS
+// transitions already have their own reduced-motion guards in style.css.
+const REDUCED_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
 input.on('gesture', () => scoreAnnouncer.unlock());
 input.on('confirm', () => {
   if (screen !== 'playing') {
@@ -1301,6 +1322,13 @@ input.on('confirm', () => {
       if (res.timed) {
         matchState.announcer = res.firedUp ? 'ON FIRE! The ball is actually on fire.' : 'Timed strike!';
         if (res.firedUp) diagLog('match', 'on fire activated', `streak ${matchState.timed.streak}`);
+        if (res.late) {
+          // Accepted late click: the contact already happened, so boost the
+          // outgoing ball now (clamped, once per contact - the helper refuses
+          // anything not currently flying away from the player).
+          const tempo = getTempoByIndex(matchState.tempoIndex);
+          applyLateBoost(matchState.ball, isOnFire(matchState.timed, matchState.elapsed) ? ON_FIRE_BOOST : TIMED_STRIKE_BOOST, 28 * tempo.speedScale);
+        }
       }
     }
     if (input.getLastInputMethod() === 'mouse') {
@@ -1469,6 +1497,11 @@ function stepFixed(dt, inp) {
           if (res.timed) {
             m.announcer = res.firedUp ? 'ON FIRE! The ball is actually on fire.' : 'Timed strike!';
             if (res.firedUp) diagLog('match', 'on fire activated', `streak ${m.timed.streak}`);
+            // Clear impact feedback: a hot yellow flash and extra sparks mark
+            // a timed strike; ignition adds a bigger burst and a heavier shake.
+            m.flashes.push({ x: ev.x, y: ev.y, z: ev.z, radius: (res.firedUp ? 1.6 : 1.2) * (REDUCED_MOTION ? 0.7 : 1), alpha: REDUCED_MOTION ? 0.55 : 1.0, color: '#ffd23c' });
+            spawnParticles(ev.x, ev.y, ev.z, '#ffd23c', REDUCED_MOTION ? 6 : (res.firedUp ? 26 : 16));
+            if (res.firedUp && !REDUCED_MOTION) m.shake.mag = Math.min(0.2, m.shake.mag + 0.08);
           } else if (res.mistimed) {
             m.announcer = 'Mistimed click. Streak lost; the return still counts.';
           }
@@ -1502,7 +1535,7 @@ function stepFixed(dt, inp) {
     m.onFire = isOnFire(m.timed, m.elapsed);
 
     if (scoredBy) {
-      timedStrikeReset(m.timed);
+      timedStrikePointEnd(m.timed);
       m.onFire = false;
       if (scoredBy === 'opponent' && m.secondChanceLeft > 0) {
         m.secondChanceLeft -= 1;

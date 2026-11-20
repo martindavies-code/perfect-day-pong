@@ -321,7 +321,9 @@ export function checkPaddleHit(paddle, hitX, hitY, ballRadius, hitBoxes = null) 
 // neither builds nor breaks the streak. Three consecutive timed strikes
 // light ON FIRE: a bounded burst (ON_FIRE_DURATION seconds, ended early by a
 // mistimed click or the point ending) with a stronger but still clamped
-// boost and a flaming ball. Timing is relative to the ball, not the music.
+// boost and a flaming ball. The streak is only broken by a mistimed click
+// (or by a lit fire ending); points ending do not break it. Timing is
+// relative to the ball, not the music.
 // ============================================================================
 export const TIMED_STRIKE_WINDOW = 0.14;
 export const TIMED_STRIKE_BOOST = 1.18;
@@ -351,10 +353,12 @@ export function timedStrikeClick(ts, elapsed) {
     elapsed - ts.lastContactAt <= TIMED_STRIKE_WINDOW
   ) {
     ts.lastContactResolved = true;
-    return applyTimedStrike(ts, elapsed);
+    const res = applyTimedStrike(ts, elapsed);
+    res.late = true;
+    return res;
   }
   ts.lastClickAt = elapsed;
-  return { timed: false, mistimed: false, firedUp: false };
+  return { timed: false, mistimed: false, firedUp: false, late: false };
 }
 
 function applyTimedStrike(ts, elapsed) {
@@ -366,7 +370,7 @@ function applyTimedStrike(ts, elapsed) {
     ts.activations += 1;
     firedUp = true;
   }
-  return { timed: true, mistimed: false, firedUp };
+  return { timed: true, mistimed: false, firedUp, late: false };
 }
 
 // Player bat contact. A parked click inside the window makes it timed and is
@@ -385,10 +389,10 @@ export function timedStrikeContact(ts, elapsed) {
     ts.streak = 0;
     ts.onFireUntil = 0;
     ts.lastContactResolved = true;
-    return { timed: false, mistimed: true, firedUp: false };
+    return { timed: false, mistimed: true, firedUp: false, late: false };
   }
   ts.lastContactResolved = false;
-  return { timed: false, mistimed: false, firedUp: false };
+  return { timed: false, mistimed: false, firedUp: false, late: false };
 }
 
 // Per-frame sweep: a parked click whose window has expired with no contact is
@@ -409,12 +413,42 @@ export function timedStrikeFrame(ts, elapsed) {
   return { mistimed: false, fireEnded: false };
 }
 
+// Point end: the fire burst ends, and a lit fire takes the streak with it
+// (same as its time-out - the burst must be re-earned). A building streak
+// SURVIVES the point ending: only mistimed clicks cost it (NBA Jam style -
+// three consecutive timed strikes across the match, not inside one rally).
+export function timedStrikePointEnd(ts) {
+  const wasOnFire = ts.onFireUntil > 0;
+  ts.onFireUntil = 0;
+  ts.lastClickAt = null;
+  ts.lastContactAt = null;
+  ts.lastContactResolved = true;
+  if (wasOnFire) ts.streak = 0;
+}
+
 export function timedStrikeReset(ts) {
   ts.streak = 0;
   ts.lastClickAt = null;
   ts.lastContactAt = null;
   ts.lastContactResolved = true;
   ts.onFireUntil = 0;
+}
+
+// Boost the outgoing ball after a late-but-accepted click. Only ever scales
+// the live ball while it travels away from the player (vz > 0), only by the
+// given factor, and always clamped to the mode's current max speed. Returns
+// whether the boost was applied.
+export function applyLateBoost(ball, factor, maxZSpeed) {
+  if (ball.vz <= 0) return false;
+  const speed = Math.hypot(ball.vx, ball.vy, ball.vz);
+  if (speed <= 1e-9) return false;
+  const target = Math.min(maxZSpeed, speed * factor);
+  if (target <= speed) return false;
+  const k = target / speed;
+  ball.vx *= k;
+  ball.vy *= k;
+  ball.vz *= k;
+  return true;
 }
 
 export function isOnFire(ts, elapsed) {

@@ -855,3 +855,13 @@ button.primary:focus-visible {
 
 /* Keep the SPEED label on one line at very narrow widths. */
 .speed-row > span:first-child { white-space: nowrap; }
+
+/* Three chunky timed-strike streak pips: big solid blocks, readable in
+   peripheral vision, static (no animation). */
+.streak-pips { display: inline-flex; gap: 4px; margin-right: 6px; vertical-align: middle; }
+.streak-pips i {
+  width: 12px; height: 12px;
+  background: #26262e;
+  border: 1px solid #4a4a55;
+}
+.streak-pips i.lit { background: #ffd23c; border-color: #ffb25e; }
