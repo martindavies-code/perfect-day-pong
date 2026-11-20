@@ -26,6 +26,12 @@
 - Rights note: MusicBrainz and EasySong list EMI Music/Oakfield Avenue Music/Screen Gems-EMI as publishers of Perfect Day. Free MIDI sites host others' transcriptions without a licence to redistribute, so a public game needs publisher permission or a licensed arrangement before bundling a Perfect Day melody. Card labelling is covered by tests/playtest.test.mjs.
 - Deferred to next round: fonts and general visual polish.
 
+## 20 November visual polish round
+- Court depth in `renderer.js`: side walls and ceiling now get faint tonal planes, and the back wall has a clear light outline, so the room reads as surfaces instead of a bare wireframe.
+- A soft edge vignette (`drawVignette()`) is rendered to an offscreen canvas once per resize and drawn under the ball, bats and HUD each frame. No per-frame gradients, no `shadowBlur`, no per-frame DOM writes; projection and physics are untouched.
+- Verified: `npm test` and the isolated Chromium UI suite pass with 0 errors; 1280x720 and 480x700 in-play screenshots inspected before and after. The existing floor gradient, ball floor shadow, ball trail and bat-plane hit flashes were already present and are unchanged.
+- Deferred still: title/route typography and any larger art pass, pending Martin's read of this round.
+
 ## Verification
 - `npm test`: logic, older win-path simulation, cloud-safety, boss-mechanics and new playtest regression tests.
 - `CHROME_PATH=/path/to/chrome npm run test:ui`: isolated temporary browser profile with mocked Google/Drive only inside the test. Covers first-sync/diverged wording, Use cloud, shop feedback, Continue Run, route layout, larger scores, zero unchanged HUD rewrites across twelve frames, OfflineAudioContext 7/7, and zero JS/HTTP errors.
