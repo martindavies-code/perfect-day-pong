@@ -48,6 +48,10 @@ export function createAudioEngine(getSettings) {
   let quantizedOnStepCount = 0;
   let fillBarsRemaining = 0;
   let pendingStinger = null; // 'win' | 'loss' | null
+  // Optional player-loaded lead line (see midi.js). Null means the built-in house track only.
+  let motif = null;
+  let motifByStep = null;
+  let motifCursor = 0;
 
   const tracker = createVoiceTracker({ maxVoices: 24, minSurfaceIntervalMs: 40 });
   let nextVoiceId = 1;
@@ -342,7 +346,8 @@ export function createAudioEngine(getSettings) {
 
     if (event.type === 'paddle') {
       const isPlayer = event.side === 'player';
-      const midi = pickScaleMidi(rootMidi + (isPlayer ? 24 : 12), rallyHits, isPlayer ? 2 : 0);
+      // With a loaded motif each racket hit steps the melody forward, so rallies play the tune.
+      const midi = motif ? nextMotifMidi(isPlayer ? 0 : -12) : pickScaleMidi(rootMidi + (isPlayer ? 24 : 12), rallyHits, isPlayer ? 2 : 0);
       const freq = midiToFreq(midi);
       triggerOneShot(pos, isPlayer ? 3 : 2, 0.18, (out, bag) => {
         const osc = ctx.createOscillator();
@@ -364,7 +369,7 @@ export function createAudioEngine(getSettings) {
       if (delayFeedback) {
         delayFeedback.gain.setTargetAtTime(Math.min(0.42, 0.2 + rallyHits * 0.02), now, 0.05);
       }
-      scheduleQuantizedAnswer(pos, isPlayer ? 'bleep' : 'stab');
+      scheduleQuantizedAnswer(pos, isPlayer ? 'bleep' : 'stab', motif ? midi + 12 : null);
     } else if (event.type === 'wall') {
       const offset = event.surface === 'floor' ? 0 : event.surface === 'ceiling' ? 4 : 2;
       const freq = midiToFreq(pickScaleMidi(rootMidi + 24, rallyHits, offset));
@@ -410,7 +415,7 @@ export function createAudioEngine(getSettings) {
     }
   }
 
-  function scheduleQuantizedAnswer(pos, kind) {
+  function scheduleQuantizedAnswer(pos, kind, forcedMidi = null) {
     if (!ctx || ctx.state !== 'running') return;
     const q = quantizeToNextStep(ctx.currentTime, gridStartSec, bpm, 4);
     if (q.stepIndex !== lastQuantizedStep) {
@@ -421,7 +426,7 @@ export function createAudioEngine(getSettings) {
     quantizedOnStepCount += 1;
 
     const when = q.stepTime;
-    const midi = pickScaleMidi(rootMidi + (kind === 'stab' ? 12 : 24), rallyHits, kind === 'bleep' ? 3 : 1);
+    const midi = forcedMidi ?? pickScaleMidi(rootMidi + (kind === 'stab' ? 12 : 24), rallyHits, kind === 'bleep' ? 3 : 1);
     const freq = midiToFreq(midi);
 
     triggerOneShot(pos, 1, Math.max(0.25, when - ctx.currentTime + 0.2), (out, bag) => {
@@ -595,7 +600,43 @@ export function createAudioEngine(getSettings) {
   }
 
   const BASS_PATTERN = [0, -1, 0, -1, 3, -1, 0, -1, 5, -1, 3, -1, 7, -1, 5, 3];
+  const MOTIF_BASS_PATTERN = [0, -1, 0, -1, 7, -1, 0, -1, 0, -1, 0, -1, 7, -1, 0, -1];
   const ARP_PATTERN = [12, -1, 15, 19, -1, 17, 15, -1, 12, -1, 19, -1, 22, 19, 15, -1];
+
+  function nextMotifMidi(octaveShift = 0) {
+    const n = motif.notes[motifCursor % motif.notes.length];
+    motifCursor += 1;
+    return n.midi + octaveShift;
+  }
+
+  function setMotif(next) {
+    motif = next && next.notes?.length ? next : null;
+    motifByStep = motif ? new Map(motif.notes.map(n => [n.step, n])) : null;
+    motifCursor = 0;
+  }
+
+  function triggerLead(t, midi, lenSteps, octaveLayer = false) {
+    const stepSec = 60 / bpm / 4;
+    const dur = Math.min(0.5, Math.max(0.08, lenSteps * stepSec * 0.8));
+    const osc = ctx.createOscillator();
+    const filt = ctx.createBiquadFilter();
+    const g = ctx.createGain();
+    osc.type = octaveLayer ? 'triangle' : 'square';
+    osc.frequency.setValueAtTime(midiToFreq(midi + (octaveLayer ? 12 : 0)), t);
+    filt.type = 'lowpass';
+    filt.Q.value = 3;
+    filt.frequency.setValueAtTime(1800 + Math.min(3000, rallyHits * 260), t);
+    filt.frequency.exponentialRampToValueAtTime(900, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(octaveLayer ? 0.03 : 0.065, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(filt);
+    filt.connect(g);
+    g.connect(musicBus);
+    if (delayNode) g.connect(delayNode);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
 
   function scheduleStep(step, t) {
     const s16 = step % 16;
@@ -614,7 +655,9 @@ export function createAudioEngine(getSettings) {
 
     const isLouDark = opponentId === 'lou_reed' && louPhase < 3;
     const isLouWarm = opponentId === 'lou_reed' && louPhase === 3;
-    const effectiveRoot = isLouWarm ? rootMidi + 5 : rootMidi;
+    let effectiveRoot = isLouWarm ? rootMidi + 5 : rootMidi;
+    // With a loaded lead line, take the bass tonic from it and keep to root/fifth so the harmony cannot clash.
+    if (motif) effectiveRoot = 36 + motif.tonicPitchClass;
 
     if (!isDeuceBreakdown && s16 % 4 === 0) {
       triggerKick(time);
@@ -632,19 +675,29 @@ export function createAudioEngine(getSettings) {
       }
     }
 
-    if (!isDeuceBreakdown && BASS_PATTERN[s16] >= 0) {
-      triggerBassOrArp(time, effectiveRoot + BASS_PATTERN[s16], false);
+    const bassPattern = motif ? MOTIF_BASS_PATTERN : BASS_PATTERN;
+    if (!isDeuceBreakdown && bassPattern[s16] >= 0) {
+      triggerBassOrArp(time, effectiveRoot + bassPattern[s16], false);
     }
 
-    if ((matchIntensity >= 1 || rallyHits >= 1) && ARP_PATTERN[s16] >= 0) {
+    if (!motif && (matchIntensity >= 1 || rallyHits >= 1) && ARP_PATTERN[s16] >= 0) {
       triggerBassOrArp(time, effectiveRoot + ARP_PATTERN[s16], true);
     }
 
     // Minor-7th chord stabs (Act II/III, or high rally)
-    if (!isDeuceBreakdown && !isLouDark && (currentAct >= 2 || rallyHits >= 4) && (s16 === 3 || s16 === 10)) {
+    if (!motif && !isDeuceBreakdown && !isLouDark && (currentAct >= 2 || rallyHits >= 4) && (s16 === 3 || s16 === 10)) {
       const detune = opponentId === 'david_bowie' ? 14 : 6;
       const bright = opponentId === 'elton_john' || isLouWarm;
       triggerChordStab(time, effectiveRoot, detune, bright);
+    }
+
+    // Loaded lead line loops on the beat grid; longer rallies open the filter and add an octave layer.
+    if (motifByStep) {
+      const note = motifByStep.get(step % motif.length);
+      if (note && !isDeuceBreakdown) {
+        triggerLead(time, note.midi, note.len);
+        if (rallyHits >= 4) triggerLead(time, note.midi, note.len, true);
+      }
     }
 
     // Warm pad on Act III or Lou Phase 3 / Deuce breakdown
@@ -763,6 +816,8 @@ export function createAudioEngine(getSettings) {
       opponentId = oppId;
       louPhase = lou;
     },
+    setMotif,
+    hasMotif: () => Boolean(motif),
     triggerStinger: (kind) => {
       pendingStinger = kind;
     },
