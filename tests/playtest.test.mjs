@@ -45,7 +45,15 @@ stepBallPhysics(swipeBall, moving, createPaddle(), .01);
 assert.ok(swipeBall.vx > 0 && swipeBall.spinX > 0);
 
 let score = createMatchScore();
-assert.match(getScoreCall(score), /You love. Opponent love/);
+assert.equal(getScoreCall(score), 'Love all.');
+assert.equal(getSpokenScoreCall(score), 'Love all.');
+for (const [n, word] of [[1, '15'], [2, '30']]) {
+  const level = { ...createMatchScore(), playerPoints: n, opponentPoints: n };
+  assert.equal(getScoreCall(level), `${word} all.`);
+  assert.equal(getSpokenScoreCall(level), `${word} all.`);
+  assert.doesNotMatch(getSpokenScoreCall(level), /\b15\. 15|30\. 30|Love\. Love/);
+}
+assert.equal(getSpokenScoreCall({ ...createMatchScore(), playerPoints: 1, opponentPoints: 0 }), '15. Love.');
 score = scorePoint(score, 'opponent'); score = scorePoint(score, 'opponent'); score = scorePoint(score, 'opponent');
 assert.match(getScoreCall(score), /Match point, opponent/);
 assert.match(getSpokenScoreCall(score), /^Match point, opponent. Love. 40./, 'Urgent spoken match point comes first');
