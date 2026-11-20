@@ -950,6 +950,7 @@ export function createDefaultSave(deviceId = 'local-device') {
     },
     settings: {
       mouseSensitivity: 1.0,
+      announcerEnabled: true,
       quickDeuce: false,
       spatialMode: 'hrtf',
       masterVolume: 0.8,
@@ -1033,6 +1034,7 @@ export function validateAndSanitizeSave(rawInput, { strict = false, fallbackDevi
       louReedWins: clampInt(rawStats.louReedWins, 0, 1000000, 0),
     },
     settings: {
+      announcerEnabled: rawSet.announcerEnabled !== false,
       mouseSensitivity: clampNum(rawSet.mouseSensitivity, 0.4, 2.2, def.settings.mouseSensitivity),
       quickDeuce: Boolean(rawSet.quickDeuce),
       spatialMode: rawSet.spatialMode === 'speakers' ? 'speakers' : 'hrtf',
