@@ -45,3 +45,9 @@
 - Physical Bluetooth/USB gamepads, subjective headphone mix and installed speech quality remain unverified.
 - Deterministic boss tests use real formations but are not human-play balance evidence. The older win-path uses a single-paddle approximation, and the newer boss harness holds tempo fixed while production accelerates every seventh paddle hit.
 - Do not expand graphics or rebalance bosses merely to make another coding pass. Use actual playtest feedback to choose the next work.
+
+## Perfect Day lead line (music)
+- perfectday.js holds the reduced vocal-melody line (8 bars, 21 notes) taken from a karaoke MIDI supplied by the project owner. midi.js reduces any MIDI to this form (pass the track index; here track 4, the one whose note onsets match all 154 lyric events).
+- audio.js plays it as a square lead on the 16th grid, bass takes the tune's tonic, racket hits step through the tune, longer rallies add an octave layer. Walls/misses keep their hit/fill sounds.
+- Rights: the composition is Lou Reed's (EMI / Oakfield Avenue / Screen Gems-EMI). No publisher licence has been found or verified; the project owner supplied the file for use in this game. If a rights holder objects, delete perfectday.js and the setMotif call in main.js and the original house track returns.
+- Verified: npm test (scheduling test with a fake Web Audio API) and a real Chromium render of the engine, recorded and pitch-analysed: opening notes A#4, F5, D#5, F5, D#5 at the expected beat times. Nobody has listened to it yet.
