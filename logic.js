@@ -3,15 +3,51 @@
  * Runs in both browser (ES module) and Node.js tests with zero dependencies.
  */
 
+// ============================================================================
+// 1. SEEDED RNG
+// ============================================================================
+
+export function mulberry32(seed) {
+  let a = (seed >>> 0) || 1;
+  return function next() {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function hashSeed(input) {
+  const str = String(input ?? Date.now());
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+
+export function generateRunSeed() {
+  const words = ['ALPHA', 'VELVET', 'CABLE', 'TENOR', 'PRAWN', 'CHARTER', 'HACIENDA', 'TAPE', 'SIGNAL'];
+  const w = words[Math.floor(Math.random() * words.length)];
+  const n = Math.floor(1000 + Math.random() * 9000);
+  return `${w}-${n}`;
+}
+
+// ============================================================================
+// 2. TENNIS SCORING STATE MACHINE
+// ============================================================================
+
 const POINT_LABELS = ['0', '15', '30', '40'];
 
 export function createMatchScore({ quickDeuce = false, firstServer = 'player' } = {}) {
+  const normalizedServer = firstServer === 'opponent' ? 'opponent' : 'player';
   return {
     playerPoints: 0,
     opponentPoints: 0,
     quickDeuce: Boolean(quickDeuce),
-    firstServer: firstServer === 'opponent' ? 'opponent' : 'player',
-    server: firstServer === 'opponent' ? 'opponent' : 'player',
+    firstServer: normalizedServer,
+    server: normalizedServer,
     pointNumber: 0,
     deuceCount: 0,
     winner: null,
@@ -25,7 +61,6 @@ export function isMatchWon(playerPoints, opponentPoints, quickDeuce = false) {
     if (diff >= 2) {
       return playerPoints > opponentPoints ? 'player' : 'opponent';
     }
-    // Quick deuce: 3rd deuce (5-5) is a single deciding point, so reaching 6-5 or 5-6 wins.
     if (quickDeuce && Math.min(playerPoints, opponentPoints) >= 5 && diff >= 1) {
       return playerPoints > opponentPoints ? 'player' : 'opponent';
     }
@@ -35,7 +70,7 @@ export function isMatchWon(playerPoints, opponentPoints, quickDeuce = false) {
 
 export function getDeuceCount(playerPoints, opponentPoints) {
   if (playerPoints >= 3 && opponentPoints >= 3 && playerPoints === opponentPoints) {
-    return playerPoints - 2; // 3-3 => 1, 4-4 => 2, 5-5 => 3
+    return playerPoints - 2;
   }
   return Math.max(0, Math.min(playerPoints, opponentPoints) - 2);
 }
@@ -135,4 +170,914 @@ export function formatTennisScore(state) {
     deuceCount,
     winner: null,
   };
+}
+
+// ============================================================================
+// 3. 3D ROOM, TEMPOS & PHYSICS (1 unit = 1 metre)
+// ============================================================================
+
+export const ROOM = {
+  width: 8.0,
+  height: 5.0,
+  depth: 16.0,
+  halfW: 4.0,
+  halfH: 2.5,
+  playerZ: 0.0,
+  opponentZ: 16.0,
+  cameraZ: -3.4,
+  ballRadius: 0.24,
+  defaultGravityY: -1.6,
+};
+
+export const TEMPOS = [
+  { id: 'adagio', label: 'ADAGIO', speedScale: 0.84, bpm: 120 },
+  { id: 'andante', label: 'ANDANTE', speedScale: 1.0, bpm: 124 },
+  { id: 'allegro', label: 'ALLEGRO', speedScale: 1.18, bpm: 127 },
+  { id: 'vivace', label: 'VIVACE', speedScale: 1.38, bpm: 130 },
+];
+
+export function getTempoByIndex(idx) {
+  const clamped = Math.max(0, Math.min(TEMPOS.length - 1, idx | 0));
+  return TEMPOS[clamped];
+}
+
+export function createPaddle({
+  x = 0,
+  y = 0,
+  width = 1.55,
+  height = 1.1,
+} = {}) {
+  return {
+    x,
+    y,
+    prevX: x,
+    prevY: y,
+    vx: 0,
+    vy: 0,
+    width,
+    height,
+  };
+}
+
+export function clampPaddle(paddle, room = ROOM) {
+  const maxX = Math.max(0.2, room.halfW - paddle.width * 0.5);
+  const maxY = Math.max(0.2, room.halfH - paddle.height * 0.5);
+  paddle.x = Math.max(-maxX, Math.min(maxX, paddle.x));
+  paddle.y = Math.max(-maxY, Math.min(maxY, paddle.y));
+  return paddle;
+}
+
+export function createBall({
+  x = 0,
+  y = 0.2,
+  z = 1.2,
+  vx = 0,
+  vy = 0,
+  vz = 11.5,
+  spinX = 0,
+  spinY = 0,
+  radius = ROOM.ballRadius,
+} = {}) {
+  return {
+    x,
+    y,
+    z,
+    vx,
+    vy,
+    vz,
+    spinX,
+    spinY,
+    radius,
+  };
+}
+
+export function checkPaddleHit(paddle, hitX, hitY, ballRadius, hitBoxes = null) {
+  const boxes = hitBoxes && hitBoxes.length > 0
+    ? hitBoxes
+    : [{ x: paddle.x, y: paddle.y, width: paddle.width, height: paddle.height }];
+
+  for (const box of boxes) {
+    const hw = box.width * 0.5 + ballRadius * 0.85;
+    const hh = box.height * 0.5 + ballRadius * 0.85;
+    if (Math.abs(hitX - box.x) <= hw && Math.abs(hitY - box.y) <= hh) {
+      return {
+        hit: true,
+        box,
+        normX: (hitX - box.x) / Math.max(0.1, box.width * 0.5),
+        normY: (hitY - box.y) / Math.max(0.1, box.height * 0.5),
+      };
+    }
+  }
+  return { hit: false, box: null, normX: 0, normY: 0 };
+}
+
+export function stepBallPhysics(ball, playerPaddle, opponentPaddle, dt, options = {}) {
+  const room = options.room || ROOM;
+  const gravityY = options.gravityY ?? room.defaultGravityY;
+  const spinAccelFactor = options.spinAccelFactor ?? 4.8;
+  const spinMultiplier = options.spinMultiplier ?? 1.0;
+  const speedMultiplier = options.speedMultiplier ?? 1.0;
+  const maxZSpeed = options.maxZSpeed ?? 30.0;
+  const minZSpeed = options.minZSpeed ?? 9.0;
+  const playerBoxes = options.playerBoxes || null;
+  const opponentBoxes = options.opponentBoxes || null;
+
+  const events = [];
+  let scoredBy = null;
+
+  const prevX = ball.x;
+  const prevY = ball.y;
+  const prevZ = ball.z;
+
+  ball.vx += ball.spinX * spinAccelFactor * dt;
+  ball.vy += (gravityY + ball.spinY * spinAccelFactor) * dt;
+
+  const spinDecay = Math.exp(-0.35 * dt);
+  ball.spinX *= spinDecay;
+  ball.spinY *= spinDecay;
+
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+  ball.z += ball.vz * dt;
+
+  const limitX = room.halfW - ball.radius;
+  if (ball.x < -limitX) {
+    ball.x = -limitX - (ball.x + limitX);
+    ball.vx = Math.abs(ball.vx);
+    events.push({ type: 'wall', surface: 'left', x: -room.halfW, y: ball.y, z: ball.z });
+  } else if (ball.x > limitX) {
+    ball.x = limitX - (ball.x - limitX);
+    ball.vx = -Math.abs(ball.vx);
+    events.push({ type: 'wall', surface: 'right', x: room.halfW, y: ball.y, z: ball.z });
+  }
+
+  const limitY = room.halfH - ball.radius;
+  if (ball.y < -limitY) {
+    ball.y = -limitY - (ball.y + limitY);
+    ball.vy = Math.max(1.2, Math.abs(ball.vy) * 0.96);
+    events.push({ type: 'wall', surface: 'floor', x: ball.x, y: -room.halfH, z: ball.z });
+  } else if (ball.y > limitY) {
+    ball.y = limitY - (ball.y - limitY);
+    ball.vy = -Math.abs(ball.vy) * 0.96;
+    events.push({ type: 'wall', surface: 'ceiling', x: ball.x, y: room.halfH, z: ball.z });
+  }
+
+  if (ball.vz < 0 && prevZ >= room.playerZ && ball.z <= room.playerZ) {
+    const denom = prevZ - ball.z;
+    const t = denom > 1e-9 ? (prevZ - room.playerZ) / denom : 0;
+    const hitX = prevX + (ball.x - prevX) * t;
+    const hitY = prevY + (ball.y - prevY) * t;
+    const hitCheck = checkPaddleHit(playerPaddle, hitX, hitY, ball.radius, playerBoxes);
+
+    if (hitCheck.hit) {
+      const nextSpeed = Math.min(
+        maxZSpeed,
+        Math.max(minZSpeed, Math.abs(ball.vz) * 1.035 * speedMultiplier)
+      );
+      ball.z = room.playerZ + (room.playerZ - ball.z) * 0.5 + 0.01;
+      ball.x = hitX;
+      ball.y = hitY;
+      ball.vz = nextSpeed;
+      ball.vx = hitCheck.normX * nextSpeed * 0.42 + playerPaddle.vx * 0.34;
+      ball.vy = hitCheck.normY * nextSpeed * 0.34 + playerPaddle.vy * 0.28 + 0.95;
+      ball.spinX = (playerPaddle.vx * 0.22 - hitCheck.normX * 0.4) * spinMultiplier;
+      ball.spinY = (playerPaddle.vy * 0.18 - hitCheck.normY * 0.25) * spinMultiplier;
+      events.push({
+        type: 'paddle',
+        side: 'player',
+        x: hitX,
+        y: hitY,
+        z: room.playerZ,
+        speed: nextSpeed,
+        normX: hitCheck.normX,
+        normY: hitCheck.normY,
+      });
+    } else {
+      scoredBy = 'opponent';
+      events.push({ type: 'miss', side: 'player', x: hitX, y: hitY, z: room.playerZ });
+    }
+  }
+
+  if (!scoredBy && ball.vz > 0 && prevZ <= room.opponentZ && ball.z >= room.opponentZ) {
+    const denom = ball.z - prevZ;
+    const t = denom > 1e-9 ? (room.opponentZ - prevZ) / denom : 0;
+    const hitX = prevX + (ball.x - prevX) * t;
+    const hitY = prevY + (ball.y - prevY) * t;
+    const hitCheck = checkPaddleHit(opponentPaddle, hitX, hitY, ball.radius, opponentBoxes);
+
+    if (hitCheck.hit) {
+      const returnScale = options.opponentReturnSpeedScale ?? 1.0;
+      const nextSpeed = Math.min(
+        maxZSpeed,
+        Math.max(minZSpeed, Math.abs(ball.vz) * 1.02 * returnScale)
+      );
+      ball.z = room.opponentZ - (ball.z - room.opponentZ) * 0.5 - 0.01;
+      ball.x = hitX;
+      ball.y = hitY;
+      ball.vz = -nextSpeed;
+      const oppSpin = options.opponentSpinBias ?? 0;
+      ball.vx = hitCheck.normX * nextSpeed * 0.36 + opponentPaddle.vx * 0.26;
+      ball.vy = hitCheck.normY * nextSpeed * 0.28 + opponentPaddle.vy * 0.22 + 0.85;
+      ball.spinX = (opponentPaddle.vx * 0.18 + oppSpin) * spinMultiplier;
+      ball.spinY = opponentPaddle.vy * 0.14 * spinMultiplier;
+      events.push({
+        type: 'paddle',
+        side: 'opponent',
+        x: hitX,
+        y: hitY,
+        z: room.opponentZ,
+        speed: nextSpeed,
+        normX: hitCheck.normX,
+        normY: hitCheck.normY,
+      });
+    } else {
+      scoredBy = 'player';
+      events.push({ type: 'miss', side: 'opponent', x: hitX, y: hitY, z: room.opponentZ });
+    }
+  }
+
+  return { events, scoredBy };
+}
+
+// ============================================================================
+// 4. FINITE BEATABLE OPPONENT AI
+// ============================================================================
+
+export function createAIState({
+  reactionDelayMs = 180,
+  maxSpeed = 6.2,
+  predictionError = 0.65,
+  missChance = 0.08,
+} = {}) {
+  return {
+    reactionDelayMs: Math.max(110, reactionDelayMs),
+    maxSpeed,
+    predictionError,
+    missChance,
+    reactionTimer: 0,
+    targetX: 0,
+    targetY: 0,
+    wasApproaching: false,
+    intentionalMiss: false,
+    retargetTimer: 0,
+  };
+}
+
+export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM) {
+  const approaching = ball.vz > 0;
+  ai.retargetTimer = Math.max(0, ai.retargetTimer - dt);
+
+  if (approaching && !ai.wasApproaching) {
+    ai.reactionTimer = Math.max(0.11, ai.reactionDelayMs / 1000);
+    ai.intentionalMiss = rng() < ai.missChance;
+    const errAngle = (rng() - 0.5) * 2;
+    const errY = (rng() - 0.5) * 2;
+    if (ai.intentionalMiss) {
+      const dir = rng() < 0.5 ? -1 : 1;
+      ai.errorOffsetX = dir * (paddle.width * 0.95 + 0.6);
+      ai.errorOffsetY = errY * 0.8;
+    } else {
+      ai.errorOffsetX = errAngle * ai.predictionError;
+      ai.errorOffsetY = errY * ai.predictionError * 0.75;
+    }
+  }
+  ai.wasApproaching = approaching;
+
+  if (approaching) {
+    if (ai.reactionTimer > 0) {
+      ai.reactionTimer -= dt;
+    } else if (ai.retargetTimer <= 0) {
+      const distZ = Math.max(0, room.opponentZ - ball.z);
+      const timeToPlane = Math.min(1.5, distZ / Math.max(1, ball.vz));
+      let predX = ball.x + ball.vx * timeToPlane * 0.78;
+      let predY = ball.y + ball.vy * timeToPlane * 0.78;
+      if (predX > room.halfW) predX = room.halfW - (predX - room.halfW);
+      if (predX < -room.halfW) predX = -room.halfW - (predX + room.halfW);
+      if (predY > room.halfH) predY = room.halfH - (predY - room.halfH);
+      if (predY < -room.halfH) predY = -room.halfH - (predY + room.halfH);
+      ai.targetX = predX + (ai.errorOffsetX || 0);
+      ai.targetY = predY + (ai.errorOffsetY || 0);
+      ai.retargetTimer = 0.08;
+    }
+  } else {
+    ai.targetX = 0;
+    ai.targetY = 0;
+  }
+
+  paddle.prevX = paddle.x;
+  paddle.prevY = paddle.y;
+
+  const dx = ai.targetX - paddle.x;
+  const dy = ai.targetY - paddle.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > 0.001) {
+    const step = Math.min(dist, ai.maxSpeed * dt);
+    paddle.x += (dx / dist) * step;
+    paddle.y += (dy / dist) * step;
+  }
+
+  clampPaddle(paddle, room);
+  paddle.vx = dt > 0 ? (paddle.x - paddle.prevX) / dt : 0;
+  paddle.vy = dt > 0 ? (paddle.y - paddle.prevY) / dt : 0;
+}
+
+// ============================================================================
+// 5. ROGUELIKE RUN: ACTS, OPPONENTS, LOU REED PHASES, PICKUPS
+// ============================================================================
+
+export const ACTS = [
+  { id: 1, title: 'ACT I — THE WARM-UP SLOT', prefix: 'PDP 1', bg: '#111214', accent: '#4ea8de', opponentColor: '#4ea8de' },
+  { id: 2, title: 'ACT II — THE RUNNING ORDER', prefix: 'PDP 2', bg: '#121116', accent: '#d4a84f', opponentColor: '#d4a84f' },
+  { id: 3, title: 'ACT III — THE FINALE', prefix: 'PDP 3', bg: '#141111', accent: '#e0533c', opponentColor: '#e0533c' },
+];
+
+export const OPPONENTS = {
+  // Act I pool (5)
+  sheona_white: {
+    id: 'sheona_white', act: 1, name: 'Sheona White', vibe: 'Wide tenor-horn bat, long flat returns.',
+    style: 'horn', width: 2.1, height: 1.0, reactionDelayMs: 250, maxSpeed: 4.5, predictionError: 0.78, missChance: 0.14,
+  },
+  visual_ministry: {
+    id: 'visual_ministry', act: 1, name: 'Visual Ministry Choir', vibe: 'Three small bats singing in unison.',
+    style: 'choir', width: 0.7, height: 0.7, reactionDelayMs: 235, maxSpeed: 4.7, predictionError: 0.75, missChance: 0.13,
+  },
+  brodsky_quartet: {
+    id: 'brodsky_quartet', act: 1, name: 'Brodsky Quartet', vibe: 'Four thin strips opening and closing on the beat.',
+    style: 'quartet', width: 0.42, height: 1.4, reactionDelayMs: 220, maxSpeed: 4.9, predictionError: 0.72, missChance: 0.12,
+  },
+  evan_dando: {
+    id: 'evan_dando', act: 1, name: 'Evan Dando', vibe: 'Unbothered. Slow and occasionally late to react.',
+    style: 'default', width: 1.5, height: 1.05, reactionDelayMs: 310, maxSpeed: 4.3, predictionError: 0.85, missChance: 0.16,
+  },
+  courtney_pine: {
+    id: 'courtney_pine', act: 1, name: 'Courtney Pine', vibe: 'Curving returns laced with jazzy spin.',
+    style: 'default', width: 1.45, height: 1.05, reactionDelayMs: 215, maxSpeed: 5.0, predictionError: 0.7, missChance: 0.11, spinBias: 1.6,
+  },
+
+  // Act II pool (7) + Bono mini-boss
+  heather_small: {
+    id: 'heather_small', act: 2, name: 'Heather Small', vibe: 'Fast off the mark, tires as the game deepens.',
+    style: 'default', width: 1.5, height: 1.05, reactionDelayMs: 175, maxSpeed: 6.1, predictionError: 0.58, missChance: 0.1,
+  },
+  tom_jones: {
+    id: 'tom_jones', act: 2, name: 'Tom Jones', vibe: 'Big serve, booming flat returns down the middle.',
+    style: 'default', width: 1.65, height: 1.15, reactionDelayMs: 185, maxSpeed: 5.7, predictionError: 0.6, missChance: 0.09, returnSpeedScale: 1.06,
+  },
+  gabrielle: {
+    id: 'gabrielle', act: 2, name: 'Gabrielle', vibe: 'Returns pulse to a visible beat ring.',
+    style: 'pulse', width: 1.45, height: 1.05, reactionDelayMs: 185, maxSpeed: 5.8, predictionError: 0.6, missChance: 0.1,
+  },
+  huey_morgan: {
+    id: 'huey_morgan', act: 2, name: 'Huey Morgan', vibe: 'Off-kilter returns that shift pace mid-flight.',
+    style: 'default', width: 1.45, height: 1.0, reactionDelayMs: 180, maxSpeed: 5.8, predictionError: 0.62, missChance: 0.1,
+  },
+  suzanne_vega: {
+    id: 'suzanne_vega', act: 2, name: 'Suzanne Vega', vibe: 'Small, quiet, precise bat near the centre.',
+    style: 'default', width: 1.05, height: 0.9, reactionDelayMs: 165, maxSpeed: 6.2, predictionError: 0.48, missChance: 0.09,
+  },
+  boyzone: {
+    id: 'boyzone', act: 2, name: 'Boyzone', vibe: 'Five bats in synchronised crossfading formation.',
+    style: 'boyzone', width: 0.58, height: 0.58, reactionDelayMs: 195, maxSpeed: 5.4, predictionError: 0.62, missChance: 0.1,
+  },
+  burning_spear: {
+    id: 'burning_spear', act: 2, name: 'Burning Spear', vibe: 'Wide bat, heavy off-beat rhythm.',
+    style: 'default', width: 1.9, height: 1.1, reactionDelayMs: 200, maxSpeed: 5.3, predictionError: 0.64, missChance: 0.1,
+  },
+  bono: {
+    id: 'bono', act: 2, name: 'Bono', isBoss: true, vibe: 'Mini-boss: corner shades and a faint decoy shadow.',
+    style: 'bono', width: 1.65, height: 1.15, reactionDelayMs: 155, maxSpeed: 6.5, predictionError: 0.52, missChance: 0.08,
+  },
+
+  // Act III fixed order (3)
+  elton_john: {
+    id: 'elton_john', act: 3, name: 'Elton John', vibe: 'Piano-key bat rising in rolling arpeggios.',
+    style: 'piano', width: 0.42, height: 1.15, reactionDelayMs: 145, maxSpeed: 6.8, predictionError: 0.48, missChance: 0.08,
+  },
+  david_bowie: {
+    id: 'david_bowie', act: 3, name: 'David Bowie', vibe: 'Chameleon bat; shifts room gravity once per match.',
+    style: 'bowie', width: 1.5, height: 1.1, reactionDelayMs: 138, maxSpeed: 7.0, predictionError: 0.46, missChance: 0.07,
+  },
+  lou_reed: {
+    id: 'lou_reed', act: 3, name: 'Lou Reed', isBoss: true, vibe: 'Ultimate Boss: deadpan NYC, three phases, Borrowed Time.',
+    style: 'lou', width: 1.55, height: 1.1, reactionDelayMs: 125, maxSpeed: 7.3, predictionError: 0.44, missChance: 0.06,
+  },
+};
+
+export const ACT1_POOL = ['sheona_white', 'visual_ministry', 'brodsky_quartet', 'evan_dando', 'courtney_pine'];
+export const ACT2_POOL = ['heather_small', 'tom_jones', 'gabrielle', 'huey_morgan', 'suzanne_vega', 'boyzone', 'burning_spear'];
+
+export const PICKUPS = {
+  bat_size: { id: 'bat_size', name: 'Widescreen Aperture', short: 'BAT+', desc: '+18% bat size (stackable).', maxStacks: 3 },
+  bat_speed: { id: 'bat_speed', name: 'Outside Broadcast Rig', short: 'SPD+', desc: '+18% bat speed (stackable).', maxStacks: 3 },
+  tempo_control: { id: 'tempo_control', name: 'Tempo Control', short: 'TMP+', desc: '+2 Tempo Control uses per match.', maxStacks: 3 },
+  extra_life: { id: 'extra_life', name: 'TV Licence Renewal', short: 'LIFE', desc: '+1 life (max 5).', maxStacks: 5 },
+  curve_master: { id: 'curve_master', name: 'Curve Master', short: 'CRV+', desc: '+35% ball spin curve.', maxStacks: 2 },
+  shadow_sight: { id: 'shadow_sight', name: 'Shadow Sight', short: 'SHD+', desc: 'Stronger depth ring & floor cues.', maxStacks: 2 },
+  second_chance: { id: 'second_chance', name: 'Second Chance', short: '2ND', desc: 'Replay your first lost point each match.', maxStacks: 1 },
+  sticky_bat: { id: 'sticky_bat', name: 'Sticky Bat', short: 'STK', desc: 'Hold ball 0.3s on catch to aim.', maxStacks: 1 },
+};
+
+export function getLouReedPhase(scoreState) {
+  const maxPts = Math.max(scoreState.playerPoints, scoreState.opponentPoints);
+  if (maxPts >= 3) {
+    return { phase: 3, name: 'Perfect Day', warm: true };
+  }
+  if (maxPts >= 2) {
+    return { phase: 2, name: 'Walk on the Wild Side', warm: false };
+  }
+  return { phase: 1, name: 'Transformer', warm: false };
+}
+
+export function createRunState({ seed = generateRunSeed(), upgradeLevels = {} } = {}) {
+  const startLives = Math.min(5, 3 + (upgradeLevels.startLives || 0));
+  const run = {
+    seed: String(seed),
+    rngCounter: 0,
+    matchIndex: 0, // 0..8 (9 matches)
+    lives: startLives,
+    maxLives: 5,
+    status: 'choose_opponent', // 'choose_opponent' | 'playing' | 'choose_pickup' | 'won' | 'lost'
+    offeredOpponents: [],
+    currentOpponentId: null,
+    offeredPickups: [],
+    pickups: {}, // pickupId -> count
+    extraLifeOffersCount: 0,
+    matchesWon: 0,
+    pointsScored: 0,
+    bossesBeaten: 0,
+    beatLouReed: false,
+    borrowedPickupId: null,
+    borrowedTimeBonus: 0,
+    usedOpponents: [],
+    upgradeLevels: { ...upgradeLevels },
+  };
+  prepareNextMatchSelection(run);
+  return run;
+}
+
+function nextRunRng(run) {
+  run.rngCounter += 1;
+  return mulberry32(hashSeed(`${run.seed}#${run.rngCounter}`));
+}
+
+export function prepareNextMatchSelection(run) {
+  const idx = run.matchIndex;
+  if (idx >= 9) {
+    run.status = 'won';
+    return run;
+  }
+
+  // Fixed slots: 5 (Bono), 6 (Elton John), 7 (David Bowie), 8 (Lou Reed)
+  if (idx === 5) {
+    run.offeredOpponents = ['bono'];
+    run.currentOpponentId = 'bono';
+    run.status = 'playing';
+    return run;
+  }
+  if (idx === 6) {
+    run.offeredOpponents = ['elton_john'];
+    run.currentOpponentId = 'elton_john';
+    run.status = 'playing';
+    return run;
+  }
+  if (idx === 7) {
+    run.offeredOpponents = ['david_bowie'];
+    run.currentOpponentId = 'david_bowie';
+    run.status = 'playing';
+    return run;
+  }
+  if (idx === 8) {
+    run.offeredOpponents = ['lou_reed'];
+    run.currentOpponentId = 'lou_reed';
+    const ownedIds = Object.keys(run.pickups).filter((k) => run.pickups[k] > 0);
+    if (ownedIds.length > 0) {
+      const r = nextRunRng(run);
+      run.borrowedPickupId = ownedIds[Math.floor(r() * ownedIds.length)];
+    } else {
+      run.borrowedPickupId = null;
+    }
+    run.status = 'playing';
+    return run;
+  }
+
+  // Choice slots: Act I (0, 1, 2) and Act II (3, 4)
+  const pool = idx < 3 ? ACT1_POOL : ACT2_POOL;
+  const available = pool.filter((id) => !run.usedOpponents.includes(id));
+  const r = nextRunRng(run);
+  const shuffled = [...available].sort(() => r() - 0.5);
+  run.offeredOpponents = shuffled.slice(0, Math.min(2, shuffled.length));
+  run.status = 'choose_opponent';
+  return run;
+}
+
+export function pickOpponent(run, opponentId) {
+  if (!run.offeredOpponents.includes(opponentId)) {
+    throw new Error(`Opponent ${opponentId} not offered`);
+  }
+  run.currentOpponentId = opponentId;
+  if (!run.usedOpponents.includes(opponentId)) {
+    run.usedOpponents.push(opponentId);
+  }
+  run.status = 'playing';
+  return run;
+}
+
+export function buildPickupOffer(run) {
+  const choiceCount = (run.upgradeLevels.pickupChoices || 0) >= 3 ? 4 : 3;
+  const r = nextRunRng(run);
+
+  const eligible = Object.values(PICKUPS)
+    .filter((p) => {
+      if (p.id === 'extra_life') return run.lives < run.maxLives;
+      return (run.pickups[p.id] || 0) < p.maxStacks;
+    })
+    .map((p) => p.id);
+
+  const shuffled = [...eligible].sort(() => r() - 0.5);
+  const offers = shuffled.slice(0, choiceCount);
+
+  // Guarantee at least two Extra Life offers per run (even if at maxLives, fallback swap if <2 offers made)
+  const matchesLeft = 8 - run.matchIndex; // wins remaining before Lou Reed
+  const neededLifeOffers = Math.max(0, 2 - run.extraLifeOffersCount);
+  if (neededLifeOffers > 0 && matchesLeft <= neededLifeOffers && !offers.includes('extra_life')) {
+    if (offers.length > 0) {
+      offers[offers.length - 1] = 'extra_life';
+    } else {
+      offers.push('extra_life');
+    }
+  }
+  if (offers.includes('extra_life')) {
+    run.extraLifeOffersCount += 1;
+  }
+  return offers;
+}
+
+export function recordMatchResult(run, { won, playerPointsScored }) {
+  run.pointsScored += Math.max(0, playerPointsScored | 0);
+
+  if (!won) {
+    run.lives = Math.max(0, run.lives - 1);
+    if (run.lives <= 0) {
+      run.status = 'lost';
+    } else {
+      // Replay same opponent
+      run.status = 'playing';
+    }
+    return run;
+  }
+
+  // Match won
+  run.matchesWon += 1;
+  const opp = OPPONENTS[run.currentOpponentId];
+  if (opp?.isBoss) {
+    run.bossesBeaten += 1;
+  }
+  if (run.currentOpponentId === 'lou_reed') {
+    run.beatLouReed = true;
+    if (run.borrowedPickupId) {
+      run.borrowedTimeBonus = 25;
+    }
+    run.matchIndex = 9;
+    run.status = 'won';
+    return run;
+  }
+
+  run.offeredPickups = buildPickupOffer(run);
+  run.status = 'choose_pickup';
+  return run;
+}
+
+export function choosePickup(run, pickupId) {
+  if (!run.offeredPickups.includes(pickupId)) {
+    throw new Error(`Pickup ${pickupId} not offered`);
+  }
+  if (pickupId === 'extra_life') {
+    run.lives = Math.min(run.maxLives, run.lives + 1);
+  } else {
+    const cap = PICKUPS[pickupId]?.maxStacks ?? 1;
+    run.pickups[pickupId] = Math.min(cap, (run.pickups[pickupId] || 0) + 1);
+  }
+  run.matchIndex += 1;
+  return prepareNextMatchSelection(run);
+}
+
+export function getEffectivePickups(run) {
+  const effective = { ...run.pickups };
+  if (run.currentOpponentId === 'lou_reed' && run.borrowedPickupId && effective[run.borrowedPickupId]) {
+    effective[run.borrowedPickupId] = Math.max(0, effective[run.borrowedPickupId] - 1);
+  }
+  return effective;
+}
+
+// ============================================================================
+// 6. PERMANENT PROGRESSION: FEE POINTS, UPGRADES, SAVE VALIDATION
+// ============================================================================
+
+export const UPGRADES = {
+  startBatSize: {
+    id: 'startBatSize',
+    name: 'Starting Bat Size',
+    desc: '+8% initial bat width & height per level.',
+    costs: [15, 30, 50, 80],
+    maxLevel: 4,
+  },
+  startBatSpeed: {
+    id: 'startBatSpeed',
+    name: 'Starting Bat Speed',
+    desc: '+10% pad/key bat speed per level.',
+    costs: [15, 30, 50, 80],
+    maxLevel: 4,
+  },
+  startLives: {
+    id: 'startLives',
+    name: 'Starting TV Licences',
+    desc: '+1 starting life per level (cap 5).',
+    costs: [40, 90],
+    maxLevel: 2,
+  },
+  pickupChoices: {
+    id: 'pickupChoices',
+    name: 'Commissioning Panel',
+    desc: 'Level 3 widens post-win pickup offers from 3 to 4.',
+    costs: [25, 45, 75],
+    maxLevel: 3,
+  },
+  tempoCharges: {
+    id: 'tempoCharges',
+    name: 'Tempo Control Reserves',
+    desc: '+1 Tempo Control charge per match per level.',
+    costs: [20, 40, 70],
+    maxLevel: 3,
+  },
+  serveWindow: {
+    id: 'serveWindow',
+    name: 'Wider Serve Tolerance',
+    desc: '+6% effective reach on first return per level.',
+    costs: [15, 35, 65],
+    maxLevel: 3,
+  },
+};
+
+export function computeRunFeePoints(run) {
+  return (
+    run.matchesWon * 10 +
+    run.pointsScored * 1 +
+    run.bossesBeaten * 5 +
+    (run.beatLouReed ? 50 : 0) +
+    (run.borrowedTimeBonus || 0)
+  );
+}
+
+export function computeUpgradeSpent(upgradeLevels = {}) {
+  let spent = 0;
+  for (const [key, def] of Object.entries(UPGRADES)) {
+    const lvl = Math.max(0, Math.min(def.maxLevel, (upgradeLevels[key] || 0) | 0));
+    for (let i = 0; i < lvl; i++) {
+      spent += def.costs[i];
+    }
+  }
+  return spent;
+}
+
+export function computeUnspentPoints(saveDoc) {
+  return (saveDoc.totalEarned || 0) - computeUpgradeSpent(saveDoc.upgradeLevels);
+}
+
+export function purchaseUpgrade(saveDoc, upgradeId) {
+  const def = UPGRADES[upgradeId];
+  if (!def) return { ok: false, reason: 'Unknown upgrade', save: saveDoc };
+  const currentLvl = saveDoc.upgradeLevels[upgradeId] || 0;
+  if (currentLvl >= def.maxLevel) return { ok: false, reason: 'Max level reached', save: saveDoc };
+  const cost = def.costs[currentLvl];
+  const unspent = computeUnspentPoints(saveDoc);
+  if (unspent < cost) return { ok: false, reason: 'Insufficient Fee Points', save: saveDoc };
+
+  const nextLevels = { ...saveDoc.upgradeLevels, [upgradeId]: currentLvl + 1 };
+  const nextDoc = {
+    ...saveDoc,
+    revision: (saveDoc.revision || 0) + 1,
+    updatedAt: new Date().toISOString(),
+    upgradeLevels: nextLevels,
+  };
+  if (computeUnspentPoints(nextDoc) < 0) {
+    return { ok: false, reason: 'Negative balance rejected', save: saveDoc };
+  }
+  return { ok: true, save: nextDoc };
+}
+
+export const SAVE_SCHEMA_VERSION = 1;
+export const MAX_IMPORT_BYTES = 256 * 1024;
+
+export function createDefaultSave(deviceId = 'local-device') {
+  return {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    revision: 0,
+    deviceId,
+    updatedAt: new Date().toISOString(),
+    totalEarned: 0,
+    upgradeLevels: {
+      startBatSize: 0,
+      startBatSpeed: 0,
+      startLives: 0,
+      pickupChoices: 0,
+      tempoCharges: 0,
+      serveWindow: 0,
+    },
+    stats: {
+      runsPlayed: 0,
+      runsWon: 0,
+      matchesWon: 0,
+      pointsScored: 0,
+      louReedWins: 0,
+    },
+    settings: {
+      mouseSensitivity: 1.0,
+      quickDeuce: false,
+      spatialMode: 'hrtf',
+      masterVolume: 0.8,
+      musicVolume: 0.42,
+      sfxVolume: 0.88,
+    },
+  };
+}
+
+const ALLOWED_SAVE_KEYS = new Set([
+  'schemaVersion', 'revision', 'deviceId', 'updatedAt',
+  'totalEarned', 'upgradeLevels', 'stats', 'settings',
+]);
+
+export function validateAndSanitizeSave(rawInput, { strict = false, fallbackDeviceId = 'local-device' } = {}) {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return { ok: false, reason: 'Save must be a JSON object', save: createDefaultSave(fallbackDeviceId) };
+  }
+
+  if (strict) {
+    for (const k of Object.keys(rawInput)) {
+      if (!ALLOWED_SAVE_KEYS.has(k)) {
+        return { ok: false, reason: `Unknown key: ${k}`, save: null };
+      }
+    }
+    if (typeof rawInput.totalEarned !== 'number' || !Number.isFinite(rawInput.totalEarned) || rawInput.totalEarned < 0) {
+      return { ok: false, reason: 'Invalid totalEarned', save: null };
+    }
+  }
+
+  const def = createDefaultSave(fallbackDeviceId);
+  const clampInt = (v, min, max, d) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return d;
+    return Math.max(min, Math.min(max, Math.floor(n)));
+  };
+  const clampNum = (v, min, max, d) => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return d;
+    return Math.max(min, Math.min(max, n));
+  };
+
+  const upgradeLevels = {};
+  const rawUp = (rawInput.upgradeLevels && typeof rawInput.upgradeLevels === 'object') ? rawInput.upgradeLevels : {};
+  if (strict) {
+    for (const k of Object.keys(rawUp)) {
+      if (!UPGRADES[k]) return { ok: false, reason: `Unknown upgrade key: ${k}`, save: null };
+    }
+  }
+  for (const [k, uDef] of Object.entries(UPGRADES)) {
+    upgradeLevels[k] = clampInt(rawUp[k], 0, uDef.maxLevel, 0);
+  }
+
+  const totalEarned = clampInt(rawInput.totalEarned, 0, 10000000, 0);
+  const rawStats = (rawInput.stats && typeof rawInput.stats === 'object') ? rawInput.stats : {};
+  const rawSet = (rawInput.settings && typeof rawInput.settings === 'object') ? rawInput.settings : {};
+
+  const sanitized = {
+    schemaVersion: SAVE_SCHEMA_VERSION,
+    revision: clampInt(rawInput.revision, 0, 100000000, 0),
+    deviceId: typeof rawInput.deviceId === 'string' && rawInput.deviceId.length > 0
+      ? rawInput.deviceId.slice(0, 64)
+      : def.deviceId,
+    updatedAt: typeof rawInput.updatedAt === 'string' ? rawInput.updatedAt.slice(0, 40) : def.updatedAt,
+    totalEarned,
+    upgradeLevels,
+    stats: {
+      runsPlayed: clampInt(rawStats.runsPlayed, 0, 1000000, 0),
+      runsWon: clampInt(rawStats.runsWon, 0, 1000000, 0),
+      matchesWon: clampInt(rawStats.matchesWon, 0, 10000000, 0),
+      pointsScored: clampInt(rawStats.pointsScored, 0, 100000000, 0),
+      louReedWins: clampInt(rawStats.louReedWins, 0, 1000000, 0),
+    },
+    settings: {
+      mouseSensitivity: clampNum(rawSet.mouseSensitivity, 0.4, 2.2, def.settings.mouseSensitivity),
+      quickDeuce: Boolean(rawSet.quickDeuce),
+      spatialMode: rawSet.spatialMode === 'speakers' ? 'speakers' : 'hrtf',
+      masterVolume: clampNum(rawSet.masterVolume, 0, 1, def.settings.masterVolume),
+      musicVolume: clampNum(rawSet.musicVolume, 0, 1, def.settings.musicVolume),
+      sfxVolume: clampNum(rawSet.sfxVolume, 0, 1, def.settings.sfxVolume),
+    },
+  };
+
+  if (computeUnspentPoints(sanitized) < 0) {
+    return {
+      ok: false,
+      reason: 'Unspent Fee Points would be negative',
+      save: strict ? null : createDefaultSave(fallbackDeviceId),
+    };
+  }
+
+  return { ok: true, save: sanitized };
+}
+
+export function detectCloudConflict({ localSave, remoteSave, lastSyncedRevision, lastSyncedRemoteVersion, remoteVersion }) {
+  if (!remoteSave) return { status: 'no_remote' };
+  const localChanged = (localSave?.revision ?? 0) !== (lastSyncedRevision ?? -1);
+  const remoteChanged = Boolean(lastSyncedRemoteVersion && remoteVersion && lastSyncedRemoteVersion !== remoteVersion);
+
+  if (!localChanged && !remoteChanged) return { status: 'in_sync' };
+  if (localChanged && !remoteChanged) return { status: 'upload_local' };
+  if (!localChanged && remoteChanged) return { status: 'pull_remote' };
+  return { status: 'conflict' };
+}
+
+// ============================================================================
+// 7. SPATIAL AUDIO & QUANTISER PURE MATH
+// ============================================================================
+
+export function gameToAudioCoords(x, y, z) {
+  return { x, y, z: -z };
+}
+
+export function computeDistanceGain(distance, refDistance = 2.5, maxDistance = 24.0, rolloff = 1.15) {
+  const d = Math.max(refDistance, Math.min(maxDistance, distance));
+  return refDistance / (refDistance + rolloff * (d - refDistance));
+}
+
+export function computeDopplerRate(ballPos, ballVel, listenerPos = { x: 0, y: 0, z: ROOM.cameraZ }) {
+  const dx = ballPos.x - listenerPos.x;
+  const dy = ballPos.y - listenerPos.y;
+  const dz = ballPos.z - listenerPos.z;
+  const dist = Math.hypot(dx, dy, dz) || 1;
+  const vToward = -((ballVel.x * dx + ballVel.y * dy + ballVel.z * dz) / dist);
+  return Math.max(0.8, Math.min(1.28, 1 + vToward / 95));
+}
+
+export function quantizeToNextStep(nowSec, gridStartSec, bpm, subdiv = 4) {
+  const stepSec = 60 / bpm / subdiv;
+  if (nowSec <= gridStartSec) {
+    return { stepTime: gridStartSec + stepSec, stepIndex: 1, stepSec };
+  }
+  const elapsed = nowSec - gridStartSec;
+  const nextIdx = Math.floor(elapsed / stepSec) + 1;
+  return {
+    stepTime: gridStartSec + nextIdx * stepSec,
+    stepIndex: nextIdx,
+    stepSec,
+  };
+}
+
+export function createVoiceTracker({ maxVoices = 24, minSurfaceIntervalMs = 40 } = {}) {
+  const active = [];
+  const lastSurfaceTime = new Map();
+
+  return {
+    canTriggerSurface(surface, nowMs) {
+      const prev = lastSurfaceTime.get(surface);
+      if (prev !== undefined && nowMs - prev < minSurfaceIntervalMs) {
+        return false;
+      }
+      lastSurfaceTime.set(surface, nowMs);
+      return true;
+    },
+    registerVoice(voice) {
+      let stolen = null;
+      if (active.length >= maxVoices) {
+        let stealIdx = 0;
+        for (let i = 1; i < active.length; i++) {
+          if (active[i].priority < active[stealIdx].priority ||
+            (active[i].priority === active[stealIdx].priority && active[i].startedAt < active[stealIdx].startedAt)) {
+            stealIdx = i;
+          }
+        }
+        stolen = active.splice(stealIdx, 1)[0];
+      }
+      active.push(voice);
+      return stolen;
+    },
+    releaseVoice(id) {
+      const idx = active.findIndex((v) => v.id === id);
+      if (idx !== -1) active.splice(idx, 1);
+    },
+    count() {
+      return active.length;
+    },
+  };
+}
+
+export const HOUSE_SCALE = [0, 3, 5, 7, 10, 12, 15, 17, 19];
+
+export function pickScaleMidi(rootMidi, rallyHits, stepOffset = 0) {
+  const idx = (rallyHits + stepOffset) % HOUSE_SCALE.length;
+  return rootMidi + HOUSE_SCALE[idx];
+}
+
+export function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
 }

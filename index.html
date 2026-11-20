@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PERFECT DAY PONG — PDP 001</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="topbar-left">
+        <span class="fac-cat" id="cat-badge">PDP 001</span>
+        <span id="top-title">BBC / ROOM TEN — CONTINUITY TRANSMISSION</span>
+      </div>
+      <div class="topbar-right">
+        <span id="lives-hud" class="pill-bar"></span>
+        <span id="audio-status" class="pill-bar">Sound: Click / Press Key</span>
+        <button id="btn-mute" class="small" type="button">Mute (M)</button>
+        <button id="btn-settings" class="small" type="button">Settings</button>
+        <button id="btn-pause" class="small" type="button">Pause (Esc)</button>
+      </div>
+    </header>
+
+    <main id="stage-wrap">
+      <canvas id="game-canvas"></canvas>
+
+      <div id="hud-overlay">
+        <div id="hud-top">
+          <div class="score-block">
+            <div class="score-row">
+              <span>VIEWER (YOU) <span id="srv-player">*</span></span>
+              <span class="score-val" id="score-player">0</span>
+            </div>
+            <div class="score-row">
+              <span id="opp-name-hud">TEST SIGNAL <span id="srv-opp"></span></span>
+              <span class="score-val" id="score-opp">0</span>
+            </div>
+          </div>
+
+          <div class="hud-center">
+            <div class="tempo-badge" id="tempo-hud">ANDANTE // 124 BPM</div>
+            <div class="announcer-line" id="announcer-hud">BBC continuity awaits serve.</div>
+          </div>
+
+          <div class="score-block" style="text-align:right">
+            <div class="score-row">
+              <span>STATUS</span>
+              <span id="status-hud" style="font-family:var(--mono)">0 - 0</span>
+            </div>
+            <div class="score-row" style="margin-top:4px">
+              <span>TEMPO CTRL</span>
+              <span id="ability-hud" style="font-family:var(--mono)">3</span>
+            </div>
+            <div id="pickups-hud" class="pickup-chips"></div>
+          </div>
+        </div>
+
+        <div id="hud-bottom">
+          <div class="pill-bar" id="controls-hint">MOUSE: MOVE BAT · CLICK: SERVE / LOCK POINTER · R-CLICK: TEMPO CTRL</div>
+          <div class="pill-bar" id="seed-hud">SEED: —</div>
+          <div class="pill-bar" id="pad-hint">PAD: NOT DETECTED</div>
+        </div>
+      </div>
+
+      <div id="screen-overlay"></div>
+    </main>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
