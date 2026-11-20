@@ -189,6 +189,12 @@ export const ROOM = {
   defaultGravityY: -1.6,
 };
 
+// View inset: the whole 3D view is scaled toward screen centre by this factor,
+// leaving a visible outer margin so corner shots stay in view. Physics and room
+// geometry are unchanged; only projection (renderer.js) and the absolute mouse
+// mapping (input.js) know about it. 1.0 = previous full-bleed framing.
+export const VIEW_INSET = 0.92;
+
 export const TEMPOS = [
   { id: 'adagio', label: 'ADAGIO', speedScale: 0.84, bpm: 120 },
   { id: 'andante', label: 'ANDANTE', speedScale: 1.0, bpm: 124 },
