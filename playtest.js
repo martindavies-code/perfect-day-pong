@@ -28,8 +28,10 @@ export function getScoreCall(score) {
   const fmt = formatTennisScore(score);
   if (score.winner) return score.winner === 'player' ? 'Match to you.' : 'Match to opponent.';
   if (fmt.isDecidingPoint) return 'Deuce. Deciding point. Next point wins.';
+  // Tennis calls: equal scores are "Love all", "15 all", "30 all"; never "15 15".
   let call = fmt.isDeuce || fmt.isAdvantage
     ? fmt.announcerText.replace('viewer', 'you').replace('broadcast', 'opponent')
+    : fmt.playerLabel === fmt.opponentLabel ? fmt.announcerText
     : `You ${fmt.playerLabel === '0' ? 'love' : fmt.playerLabel}. Opponent ${fmt.opponentLabel === '0' ? 'love' : fmt.opponentLabel}.`;
   if (isMatchWon(score.playerPoints + 1, score.opponentPoints, score.quickDeuce)) call += ' Match point, you.';
   if (isMatchWon(score.playerPoints, score.opponentPoints + 1, score.quickDeuce)) call += ' Match point, opponent.';
@@ -44,8 +46,8 @@ export function getSpokenScoreCall(score) {
   const call = getScoreCall(score);
   const urgent = call.includes('Match point, you.') ? 'Match point, you. '
     : call.includes('Match point, opponent.') ? 'Match point, opponent. ' : '';
-  const word = label => label === '0' ? 'Love' : label;
-  return `${urgent}${word(fmt.playerLabel)}. ${word(fmt.opponentLabel)}.`;
+  // fmt.announcerText is "Love all." / "15 all." when level, else "15. Love." (you first).
+  return `${urgent}${fmt.announcerText}`;
 }
 
 export function getRunRoute(run) {
