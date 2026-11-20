@@ -31,7 +31,6 @@ export function createInputManager(canvas, getSettings) {
     pause: [],
     confirm: [],
     back: [],
-    ability: [],
     nav: [],
     padDisconnect: [],
     gesture: [],
@@ -91,10 +90,6 @@ export function createInputManager(canvas, getSettings) {
       emit('nav', 'left');
     } else if (code === 'ArrowRight' || code === 'KeyD') {
       emit('nav', 'right');
-    } else if (code === 'KeyQ' || code === 'KeyE' || code === 'ShiftLeft' || code === 'ShiftRight') {
-      lastInputMethod = 'keyboard';
-      emit('ability');
-      pendingActions.add('ability');
     }
   }
 
@@ -143,10 +138,6 @@ export function createInputManager(canvas, getSettings) {
       lastInputMethod = 'mouse';
       emit('confirm');
       pendingActions.add('confirm');
-    } else if (e.button === 2) {
-      lastInputMethod = 'mouse';
-      emit('ability');
-      pendingActions.add('ability');
     }
   }
 
@@ -257,10 +248,6 @@ export function createInputManager(canvas, getSettings) {
     if (justPressed(9)) {
       emit('pause');
     }
-    if (justPressed(4) || justPressed(5) || justPressed(6) || justPressed(7)) {
-      emit('ability');
-      pendingActions.add('ability');
-    }
 
     // D-pad up/down/left/right (12, 13, 14, 15) + Left stick (axes 0, 1)
     let ax = applyDeadzone(pad.axes?.[0] ?? 0);
@@ -328,7 +315,6 @@ export function createInputManager(canvas, getSettings) {
         ? { up: padState.navUp, down: padState.navDown, left: padState.navLeft, right: padState.navRight }
         : null,
       confirmPressed: pendingActions.has('confirm'),
-      abilityPressed: pendingActions.has('ability'),
     };
     pendingActions.clear();
 
