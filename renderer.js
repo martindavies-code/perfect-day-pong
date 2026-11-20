@@ -1,4 +1,4 @@
-import { ROOM } from './logic.js';
+import { ROOM, VIEW_INSET } from './logic.js';
 
 /**
  * 3D Perspective Projection + Room Ten / Factory-inspired Canvas 2D Renderer.
@@ -47,7 +47,7 @@ export function createRenderer(canvas) {
   function project(x, y, z, shakeX = 0, shakeY = 0) {
     const dz = Math.max(0.45, z - ROOM.cameraZ);
     // Focal length scaled to viewport so the front plane fills ~76% of the frame cleanly
-    const focal = Math.min(width * 0.62, height * 0.92);
+    const focal = Math.min(width * 0.62, height * 0.92) * VIEW_INSET;
     const scale = focal / dz;
     const sx = width * 0.5 + (x - shakeX) * scale;
     const sy = height * 0.5 - (y - shakeY) * scale;
