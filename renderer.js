@@ -129,6 +129,12 @@ export function createRenderer(canvas) {
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    // 1b. Broom-cupboard broadcast gear on the back wall: a bar monitor (with
+    // a tiny duck perched on top), a bouncing VU meter, a patch bay and an ON
+    // AIR lamp. Drawn in wall space, kept small, dim and at the edges so the
+    // far-plane ball arrival zone stays clean.
+    drawBackWallSet(tl1, tr1, fl1, fr1, state.elapsed || 0, isWarmPhase);
+
     // Side walls and ceiling: faint tonal planes (flat fills, no per-frame gradients)
     const wallFill = (p, q, r, s, color) => {
       ctx.fillStyle = color;
@@ -143,6 +149,34 @@ export function createRenderer(canvas) {
     wallFill(fl0, fl1, tl1, tl0, 'rgba(60,90,140,0.10)');
     wallFill(fr0, fr1, tr1, tr0, 'rgba(60,90,140,0.10)');
     wallFill(tl0, tl1, tr1, tr0, 'rgba(255,255,255,0.03)');
+
+    // 1c. Wipeout-style floor: glowing track edges with chevron ticks and a
+    // soft specular sheen, all low-alpha so the grid and depth ring still lead.
+    {
+      const edgeAlpha = isWarmPhase ? 0.18 : 0.3;
+      ctx.save();
+      ctx.strokeStyle = theme.accent;
+      ctx.globalAlpha = edgeAlpha;
+      ctx.lineWidth = 2.5;
+      drawLine3D(-hw * 0.985, -hh, 0, -hw * 0.985, -hh, d, sx, sy);
+      drawLine3D(hw * 0.985, -hh, 0, hw * 0.985, -hh, d, sx, sy);
+      ctx.globalAlpha = edgeAlpha * 0.7;
+      ctx.lineWidth = 1.4;
+      for (let cz = 1; cz < 8; cz++) {
+        const z = (d * cz) / 8;
+        drawLine3D(-hw * 0.985, -hh, z, -hw * 0.9, -hh, z, sx, sy);
+        drawLine3D(hw * 0.985, -hh, z, hw * 0.9, -hh, z, sx, sy);
+      }
+      ctx.restore();
+      const sheen = project(0, -hh + 0.005, d * 0.45, sx, sy);
+      const sheenGrad = ctx.createRadialGradient(sheen.x, sheen.y, 0, sheen.x, sheen.y, sheen.scale * 3.2);
+      sheenGrad.addColorStop(0, isWarmPhase ? 'rgba(244,212,168,0.05)' : 'rgba(232,230,223,0.05)');
+      sheenGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sheenGrad;
+      ctx.beginPath();
+      ctx.ellipse(sheen.x, sheen.y, sheen.scale * 3.2, sheen.scale * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // 2. Converging Grid Lines with depth fog
     const slices = 8;
@@ -184,6 +218,18 @@ export function createRenderer(canvas) {
     }
 
     drawVignette();
+
+    // 2c. Slow transmit-scanline sweep: one soft band drifting down the room,
+    // kept near-invisible so it never fights the ball. Phosphor life, 8s cycle.
+    {
+      const sweepY = (((state.elapsed || 0) % 8) / 8) * (height + 160) - 80;
+      const sweepGrad = ctx.createLinearGradient(0, sweepY - 40, 0, sweepY + 40);
+      sweepGrad.addColorStop(0, 'rgba(244,242,235,0)');
+      sweepGrad.addColorStop(0.5, 'rgba(244,242,235,0.045)');
+      sweepGrad.addColorStop(1, 'rgba(244,242,235,0)');
+      ctx.fillStyle = sweepGrad;
+      ctx.fillRect(0, sweepY - 40, width, 80);
+    }
 
     // 3. DEPTH CUE: Moving Depth Ring along z at ball.z
     if (ball) {
@@ -286,11 +332,40 @@ export function createRenderer(canvas) {
         ctx.restore();
       }
 
-      // 7. Ball in 3D perspective
+      // 7. Ball in 3D perspective: lit sphere (offset hotspot + rim) with a
+      // soft glow and a mirrored floor reflection - 1997 gloss, white core and
+      // accent rim preserved for readability.
       const bp = project(ball.x, ball.y, ball.z, sx, sy);
       const bRad = Math.max(4, ball.radius * bp.scale);
+      // Mirrored floor reflection, fading with height above the floor.
+      const refl = project(ball.x, -hh - (ball.y + hh), ball.z, sx, sy);
+      const reflAlpha = Math.max(0, 0.16 - heightAboveFloor / (ROOM.height * 1.4) * 0.16);
+      if (reflAlpha > 0.01) {
+        ctx.save();
+        ctx.fillStyle = `rgba(244,242,235,${reflAlpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.ellipse(refl.x, refl.y, bRad, Math.max(2, bRad * 0.38), 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
       ctx.save();
-      ctx.fillStyle = '#f4f2eb';
+      // Soft outer glow
+      const glow = ctx.createRadialGradient(bp.x, bp.y, bRad * 0.4, bp.x, bp.y, bRad * 2.1);
+      glow.addColorStop(0, 'rgba(244,242,235,0.16)');
+      glow.addColorStop(1, 'rgba(244,242,235,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(bp.x, bp.y, bRad * 2.1, 0, Math.PI * 2);
+      ctx.fill();
+      // Lit sphere: white hotspot up-left, body to mid-grey at the far edge
+      const sphere = ctx.createRadialGradient(
+        bp.x - bRad * 0.35, bp.y - bRad * 0.35, bRad * 0.1,
+        bp.x, bp.y, bRad
+      );
+      sphere.addColorStop(0, '#ffffff');
+      sphere.addColorStop(0.55, '#f4f2eb');
+      sphere.addColorStop(1, '#b9b6ac');
+      ctx.fillStyle = sphere;
       ctx.beginPath();
       ctx.arc(bp.x, bp.y, bRad, 0, Math.PI * 2);
       ctx.fill();
@@ -322,6 +397,12 @@ export function createRenderer(canvas) {
       const bh = p1.y - p2.y;
 
       ctx.save();
+      // Neon under-glow behind the wireframe (console-era bat energy)
+      ctx.strokeStyle = theme.accent;
+      ctx.globalAlpha = 0.28;
+      ctx.lineWidth = 7;
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(244, 242, 235, 0.08)';
       ctx.fillRect(bx, by, bw, bh);
       ctx.strokeStyle = '#f4f2eb';
@@ -370,6 +451,137 @@ export function createRenderer(canvas) {
     }
   }
 
+  // Radiophonic-workshop / broom-cupboard set dressing for the back wall.
+  // Everything is mapped in wall space (u: 0 left -> 1 right, v: 0 top -> 1
+  // bottom) so it sits correctly in perspective, and kept dim and peripheral.
+  function drawBackWallSet(tl, tr, fl, fr, elapsed, isWarmPhase) {
+    const wallPoint = (u, v) => {
+      const topX = tl.x + (tr.x - tl.x) * u;
+      const topY = tl.y + (tr.y - tl.y) * u;
+      const botX = fl.x + (fr.x - fl.x) * u;
+      const botY = fl.y + (fr.y - fl.y) * u;
+      return { x: topX + (botX - topX) * v, y: topY + (botY - topY) * v };
+    };
+    const wallQuadPath = (u0, v0, u1, v1) => {
+      const a = wallPoint(u0, v0);
+      const b = wallPoint(u1, v0);
+      const c = wallPoint(u1, v1);
+      const d2 = wallPoint(u0, v1);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.lineTo(d2.x, d2.y);
+      ctx.closePath();
+    };
+    ctx.save();
+    const gearAlpha = isWarmPhase ? 0.5 : 0.75;
+    ctx.globalAlpha = gearAlpha;
+
+    // -- Bar monitor, top-left of the wall: casing, screen, 7 colour bars.
+    wallQuadPath(0.045, 0.07, 0.19, 0.3);
+    ctx.fillStyle = '#191b1f';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(244,242,235,0.35)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    const bars = ['#8a8a86', '#b7a400', '#00a3a3', '#00923f', '#a3007b', '#c01c1c', '#1c3fa0'];
+    const mu0 = 0.055;
+    const mu1 = 0.18;
+    const mv0 = 0.1;
+    const mv1 = 0.26;
+    for (let i = 0; i < bars.length; i++) {
+      const bu0 = mu0 + ((mu1 - mu0) * i) / bars.length;
+      const bu1 = mu0 + ((mu1 - mu0) * (i + 1)) / bars.length;
+      wallQuadPath(bu0, mv0, bu1, mv1);
+      ctx.fillStyle = bars[i];
+      ctx.globalAlpha = gearAlpha * 0.6;
+      ctx.fill();
+    }
+    ctx.globalAlpha = gearAlpha;
+
+    // -- Tiny duck perched on the monitor casing: yellow body/head, orange
+    // beak, green Mohican. A stylised nod to a certain broom-cupboard puppet.
+    const duckBlocks = [
+      // [u0, v0, u1, v1, colour]
+      [0.085, 0.035, 0.115, 0.07, '#e8c832'],   // body
+      [0.1, 0.005, 0.125, 0.04, '#e8c832'],    // head
+      [0.125, 0.018, 0.14, 0.032, '#e07b28'],  // beak
+      [0.104, -0.014, 0.121, 0.008, '#2f9e44'],// Mohican
+      [0.09, 0.055, 0.1, 0.07, '#d4a017'],     // wing shade
+    ];
+    for (const [du0, dv0, du1, dv1, col] of duckBlocks) {
+      wallQuadPath(du0, dv0, du1, dv1);
+      ctx.fillStyle = col;
+      ctx.fill();
+    }
+    const eye = wallPoint(0.121, 0.016);
+    ctx.fillStyle = '#111214';
+    ctx.fillRect(eye.x - 1, eye.y - 1, 2, 2);
+
+    // -- VU meter, top-right: 8 bars bouncing on a slow pseudo-level pattern.
+    wallQuadPath(0.8, 0.07, 0.955, 0.24);
+    ctx.fillStyle = '#191b1f';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(244,242,235,0.35)';
+    ctx.stroke();
+    for (let i = 0; i < 8; i++) {
+      const level = 0.25 + 0.7 * Math.abs(Math.sin(elapsed * 2.2 + i * 1.7) * Math.cos(elapsed * 0.9 + i));
+      const vu0 = 0.812 + i * 0.017;
+      const vu1 = vu0 + 0.011;
+      const vTop = 0.21 - level * 0.11;
+      wallQuadPath(vu0, vTop, vu1, 0.21);
+      ctx.fillStyle = i >= 6 ? '#c01c1c' : i >= 4 ? '#d4a84f' : '#00923f';
+      ctx.fill();
+    }
+
+    // -- Patch bay, right edge: socket grid + one patched cable.
+    wallQuadPath(0.86, 0.44, 0.965, 0.72);
+    ctx.fillStyle = '#14161a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(244,242,235,0.25)';
+    ctx.stroke();
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 4; c++) {
+        const p = wallPoint(0.878 + c * 0.023, 0.49 + r * 0.075);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(244,242,235,0.4)';
+        ctx.fill();
+      }
+    }
+    const cab0 = wallPoint(0.878, 0.49);
+    const cab1 = wallPoint(0.947, 0.64);
+    const cabMid = wallPoint(0.93, 0.53);
+    ctx.beginPath();
+    ctx.moveTo(cab0.x, cab0.y);
+    ctx.quadraticCurveTo(cabMid.x, cabMid.y + 8, cab1.x, cab1.y);
+    ctx.strokeStyle = '#e0533c';
+    ctx.lineWidth = 1.3;
+    ctx.stroke();
+
+    // -- ON AIR lamp, left edge, mostly lit with a slow breathing glow.
+    const onAir = 0.55 + 0.2 * Math.sin(elapsed * 1.4);
+    wallQuadPath(0.045, 0.46, 0.125, 0.54);
+    ctx.fillStyle = '#2a0f0c';
+    ctx.fill();
+    ctx.strokeStyle = `rgba(224,83,60,${(0.5 + onAir * 0.5).toFixed(3)})`;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    const oa0 = wallPoint(0.055, 0.478);
+    const oa1 = wallPoint(0.115, 0.522);
+    ctx.fillStyle = `rgba(224,83,60,${(0.35 + onAir * 0.55).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(oa0.x, oa0.y);
+    ctx.lineTo(oa1.x, oa0.y);
+    ctx.lineTo(oa1.x, oa1.y);
+    ctx.lineTo(oa0.x, oa1.y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
   function drawOpponentBat(paddle, boxes, style = 'default', theme, sx, sy, elapsed = 0, scorePoints = 0) {
     if (!paddle) return;
     const list = boxes && boxes.length > 0
@@ -393,20 +605,36 @@ export function createRenderer(canvas) {
           ? bowieColors[Math.floor(scorePoints / 2) % bowieColors.length]
           : (theme.opponentColor || theme.accent);
 
+      let fillTop;
+      let fillBottom;
       if (style === 'lou') {
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(244,242,235,0.88)' : 'rgba(18,19,21,0.94)';
+        [fillTop, fillBottom] = i % 2 === 0 ? ['rgba(255,255,255,0.94)', 'rgba(212,209,200,0.88)'] : ['rgba(34,35,38,0.96)', 'rgba(12,13,15,0.94)'];
       } else if (style === 'piano') {
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(244,242,235,0.92)' : 'rgba(20,21,24,0.95)';
+        [fillTop, fillBottom] = i % 2 === 0 ? ['rgba(255,255,255,0.95)', 'rgba(214,211,202,0.92)'] : ['rgba(36,37,41,0.96)', 'rgba(14,15,18,0.95)'];
       } else if (style === 'horn') {
-        ctx.fillStyle = 'rgba(212, 168, 79, 0.25)';
+        [fillTop, fillBottom] = ['rgba(226, 188, 100, 0.34)', 'rgba(196, 146, 58, 0.2)'];
       } else {
-        ctx.fillStyle = 'rgba(224, 83, 60, 0.22)';
+        [fillTop, fillBottom] = ['rgba(238, 105, 84, 0.3)', 'rgba(210, 62, 42, 0.18)'];
       }
 
+      // Metallic 16-bit bar: vertical gradient fill + top bevel highlight
+      const batGrad = ctx.createLinearGradient(0, by, 0, by + bh);
+      batGrad.addColorStop(0, fillTop);
+      batGrad.addColorStop(1, fillBottom);
+      ctx.fillStyle = batGrad;
       ctx.fillRect(bx, by, bw, bh);
       ctx.strokeStyle = strokeCol;
       ctx.lineWidth = 2;
       ctx.strokeRect(bx, by, bw, bh);
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(bx + 1.5, by + 1.5);
+      ctx.lineTo(bx + bw - 1.5, by + 1.5);
+      ctx.stroke();
+      ctx.restore();
 
       // Abstract opponent motifs (never likenesses)
       if (style === 'horn') {
