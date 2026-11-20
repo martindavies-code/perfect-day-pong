@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/logic.test.js && node tests/winpath.sim.mjs && node tests/cloud-safety.test.mjs && node tests/boss-mechanics.test.mjs && node tests/playtest.test.mjs && node tests/birt-cards.test.mjs",
+    "test": "node tests/logic.test.js && node tests/winpath.sim.mjs && node tests/cloud-safety.test.mjs && node tests/boss-mechanics.test.mjs && node tests/playtest.test.mjs && node tests/birt-cards.test.mjs && node tests/midi.test.mjs && node tests/audio-motif.test.mjs && node tests/perfectday.test.mjs",
     "test:ui": "node tests/ui-progression.test.mjs"
   }
 }

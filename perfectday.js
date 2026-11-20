@@ -1,0 +1,5 @@
+// Lead line for the Perfect Day arrangement: the vocal-melody track (first two verse lines, 8 bars)
+// of a karaoke MIDI file supplied by the project owner, reduced to a 16th-note grid by midi.js.
+// Rights note: the composition is Lou Reed's (EMI / Oakfield Avenue / Screen Gems-EMI per MusicBrainz).
+// Rights: no publisher licence has been found or verified for this repo. The MIDI was supplied by the project owner for this game.
+export const PERFECT_DAY_MOTIF = {"notes":[{"step":0,"midi":70,"len":4},{"step":4,"midi":77,"len":4},{"step":8,"midi":75,"len":2},{"step":10,"midi":77,"len":3},{"step":12,"midi":75,"len":18},{"step":40,"midi":68,"len":2},{"step":44,"midi":68,"len":4},{"step":48,"midi":72,"len":3},{"step":52,"midi":75,"len":4},{"step":56,"midi":77,"len":3},{"step":58,"midi":75,"len":3},{"step":60,"midi":73,"len":18},{"step":88,"midi":73,"len":3},{"step":92,"midi":73,"len":3},{"step":96,"midi":73,"len":5},{"step":102,"midi":73,"len":1},{"step":104,"midi":73,"len":2},{"step":106,"midi":75,"len":2},{"step":108,"midi":73,"len":10},{"step":120,"midi":73,"len":4},{"step":124,"midi":75,"len":4}],"length":128,"tonicPitchClass":1};

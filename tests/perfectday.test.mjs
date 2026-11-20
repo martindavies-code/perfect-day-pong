@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { PERFECT_DAY_MOTIF as m } from '../perfectday.js';
+import { validMotif } from '../midi.js';
+assert.ok(validMotif(m), 'built-in Perfect Day lead line is a valid motif');
+assert.equal(m.length, 128);
+assert.ok(m.notes.length >= 16);
+assert.deepEqual(m.notes.slice(0, 3).map(n => n.midi - m.notes[0].midi), [0, 7, 5], 'opening phrase contour');
+assert.ok(/import \{ PERFECT_DAY_MOTIF \}/.test(fs.readFileSync(new URL('../main.js', import.meta.url), 'utf8')), 'main.js loads it');
+console.log('Perfect Day lead line checks passed.');
