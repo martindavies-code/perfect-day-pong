@@ -98,6 +98,15 @@ export function createInputManager(canvas, getSettings) {
     keys.delete(e.code);
   }
 
+  // Layout is stable between resizes/scrolls. Do not force layout on every
+  // high-frequency mouse event, especially immediately before a paddle hit.
+  let canvasRect = canvas.getBoundingClientRect();
+  function refreshCanvasRect() { canvasRect = canvas.getBoundingClientRect(); }
+  const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(refreshCanvasRect) : null;
+  resizeObserver?.observe(canvas);
+  window.addEventListener('resize', refreshCanvasRect);
+  window.addEventListener('scroll', refreshCanvasRect, true);
+
   function onMouseMove(e) {
     lastInputMethod = 'mouse';
     mouseDeltaMoved = true;
@@ -107,7 +116,7 @@ export function createInputManager(canvas, getSettings) {
       virtualMouseX = Math.max(-1, Math.min(1, virtualMouseX + e.movementX * scale));
       virtualMouseY = Math.max(-1, Math.min(1, virtualMouseY - e.movementY * scale));
     } else {
-      const rect = canvas.getBoundingClientRect();
+      const rect = canvasRect;
       if (rect.width > 0 && rect.height > 0) {
         const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
@@ -341,6 +350,9 @@ export function createInputManager(canvas, getSettings) {
   }
 
   function destroy() {
+    resizeObserver?.disconnect();
+    window.removeEventListener('resize', refreshCanvasRect);
+    window.removeEventListener('scroll', refreshCanvasRect, true);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     canvas.removeEventListener('mousemove', onMouseMove);
