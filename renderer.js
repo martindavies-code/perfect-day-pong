@@ -101,6 +101,24 @@ export function createRenderer(canvas) {
     ctx.lineTo(tl1.x, tl1.y);
     ctx.closePath();
     ctx.fill();
+    ctx.strokeStyle = 'rgba(244,242,235,0.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Side walls and ceiling: faint tonal planes (flat fills, no per-frame gradients)
+    const wallFill = (p, q, r, s, color) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+      ctx.lineTo(r.x, r.y);
+      ctx.lineTo(s.x, s.y);
+      ctx.closePath();
+      ctx.fill();
+    };
+    wallFill(fl0, fl1, tl1, tl0, 'rgba(60,90,140,0.10)');
+    wallFill(fr0, fr1, tr1, tr0, 'rgba(60,90,140,0.10)');
+    wallFill(tl0, tl1, tr1, tr0, 'rgba(255,255,255,0.03)');
 
     // 2. Converging Grid Lines with depth fog
     const slices = 8;
@@ -140,6 +158,8 @@ export function createRenderer(canvas) {
       drawLine3D(-hw, y, 0, -hw, y, d, sx, sy);
       drawLine3D(hw, y, 0, hw, y, d, sx, sy);
     }
+
+    drawVignette();
 
     // 3. DEPTH CUE: Moving Depth Ring along z at ball.z
     if (ball) {
