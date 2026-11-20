@@ -415,9 +415,6 @@ button.small {
 }
 
 @media (max-width: 720px) {
-  #screen-overlay {
-    align-items: flex-start;
-  }
   #hud-overlay {
     padding: 8px 10px;
   }
@@ -435,7 +432,6 @@ button.small {
   }
   .card {
     padding: 16px 18px;
-    margin: 0 auto;
   }
   .card::before {
     margin: -16px -18px 14px -18px;
