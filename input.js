@@ -1,4 +1,4 @@
-import { VIEW_INSET } from './logic.js';
+import { ROOM, viewScale } from './logic.js';
 
 /**
  * Unified input handler: Mouse (pointer lock + fallback), Gamepad API, Keyboard.
@@ -124,10 +124,15 @@ export function createInputManager(canvas, getSettings) {
       if (rect.width > 0 && rect.height > 0) {
         const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        // Divide by VIEW_INSET so the inset court's visible edges map to the
-        // paddle's full range; the margin around the view stays reachable past 1.
-        pointerNormX = Math.max(-1, Math.min(1, (nx / VIEW_INSET) * (0.95 + sens * 0.2)));
-        pointerNormY = Math.max(-1, Math.min(1, (ny / VIEW_INSET) * (0.95 + sens * 0.2)));
+        // Map the visible court edges (not the raw screen edges) to the
+        // paddle's full range, matching the bounded-fit projection; the outer
+        // margin stays reachable past the walls.
+        const s0 = viewScale(rect.width, rect.height);
+        const fx = (s0 * ROOM.halfW) / (rect.width * 0.5);
+        const fy = (s0 * ROOM.halfH) / (rect.height * 0.5);
+        const k = 0.95 + sens * 0.2;
+        pointerNormX = Math.max(-1, Math.min(1, (nx / fx) * k));
+        pointerNormY = Math.max(-1, Math.min(1, (ny / fy) * k));
       }
     }
   }
