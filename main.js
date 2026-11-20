@@ -34,9 +34,6 @@ import {
   validateImportedText,
   resetProgress,
   createBackupSnapshot,
-  saveRunSnapshot,
-  loadRunSnapshot,
-  clearRunSnapshot,
 } from './storage.js';
 import { createCloudManager } from './cloud.js';
 import { pickInterstitialCard } from './content.js';
@@ -83,7 +80,6 @@ let cloudNotice = '';
 let pendingConflict = null;
 let resetConfirmPending = false;
 let saveNotice = '';
-let shopNotice = '';
 let lastInterstitial = pickInterstitialCard(Math.random);
 let charterReviewBanner = '';
 let prevActSeen = 1;
@@ -117,32 +113,6 @@ function activateOverlayFocus() {
 
 function persistSave() {
   saveLocalSave(saveDoc);
-}
-
-// Persist the in-progress run at match boundaries so a refresh can resume it.
-function persistRunSnapshot() {
-  if (runState && ['choose_opponent', 'playing', 'choose_pickup'].includes(runState.status)) {
-    saveRunSnapshot(runState);
-  } else {
-    clearRunSnapshot();
-  }
-}
-
-function resumeSavedRun() {
-  const snap = loadRunSnapshot();
-  if (!snap) return;
-  runState = snap;
-  prevActSeen = 0; // force the act continuity ident to replay on resume
-  charterReviewBanner = '';
-  lastInterstitial = pickInterstitialCard(mulberry32(hashSeed(`${runState.seed}-resume`)));
-  audio.unlockFromGesture();
-  if (runState.status === 'playing') {
-    // Resume at the start of the current fixture (score resets for this match).
-    beginCurrentMatch();
-  } else {
-    screen = runState.status;
-    renderOverlay();
-  }
 }
 
 function triggerDownload(filename, text) {
@@ -182,7 +152,6 @@ function startNewRun() {
   charterReviewBanner = '';
   lastInterstitial = pickInterstitialCard(mulberry32(hashSeed(runState.seed)));
   audio.playContinuityIdent(1);
-  persistRunSnapshot();
   if (runState.status === 'playing') {
     beginCurrentMatch();
   } else {
@@ -477,7 +446,6 @@ function finishMatch(won) {
   const prevMatchIdx = runState.matchIndex;
   audio.triggerStinger(won ? 'win' : 'loss');
   recordMatchResult(runState, { won, playerPointsScored: pts });
-  persistRunSnapshot();
   lastInterstitial = pickInterstitialCard(matchState.rng, runState.matchIndex);
 
   if (won && (prevMatchIdx === 2 || prevMatchIdx === 5)) {
@@ -605,7 +573,6 @@ function renderOverlay() {
 
   if (screen === 'title') {
     const unspent = computeUnspentPoints(saveDoc);
-    const resumableRun = loadRunSnapshot();
     overlay.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -628,7 +595,6 @@ function renderOverlay() {
         <p class="note-line">Headphones recommended for true 3D HRTF spatial ball &amp; impact cues.</p>
         <div class="btn-row">
           <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
-          ${resumableRun ? `<button class="primary" id="btn-continue-run" type="button">Continue Run (Match ${resumableRun.matchIndex + 1} / 9, ${resumableRun.lives} licence${resumableRun.lives === 1 ? '' : 's'} left)</button>` : ''}
           <button id="btn-upgrades" type="button">Licence Fee Review (${unspent} pts)</button>
           <button id="btn-open-settings" type="button">Settings &amp; Save</button>
         </div>
@@ -639,10 +605,6 @@ function renderOverlay() {
       audio.unlockFromGesture();
       startNewRun();
     };
-    const btnContinue = document.getElementById('btn-continue-run');
-    if (btnContinue) {
-      btnContinue.onclick = () => resumeSavedRun();
-    }
     document.getElementById('btn-upgrades').onclick = () => {
       screen = 'upgrades';
       renderOverlay();
@@ -667,7 +629,7 @@ function renderOverlay() {
             <div style="font-weight:700">${u.name} <span style="font-family:var(--mono);color:var(--accent)">LV ${lvl}/${u.maxLevel}</span></div>
             <div class="choice-sub">${u.desc}</div>
           </div>
-          <button class="btn-buy-upgrade ${canBuy ? 'primary' : ''}" data-up="${u.id}" ${maxed ? 'disabled' : ''}>
+          <button class="btn-buy-upgrade ${canBuy ? 'primary' : ''}" data-up="${u.id}" ${canBuy ? '' : 'disabled'}>
             ${maxed ? 'MAXED' : `BUY (${cost})`}
           </button>
         </div>
@@ -687,7 +649,6 @@ function renderOverlay() {
         <div class="btn-row">
           <button class="primary" id="btn-up-back" type="button">Back to Title</button>
         </div>
-        ${shopNotice ? `<p class="note-line" style="margin-top:10px">${shopNotice}</p>` : ''}
       </div>
     `;
     for (const btn of overlay.querySelectorAll('.btn-buy-upgrade')) {
@@ -698,17 +659,11 @@ function renderOverlay() {
           persistSave();
           cloud.scheduleDebouncedSync(() => saveDoc, handleCloudSyncResult);
           audio.playUiBeep(740, 0.06);
-          shopNotice = '';
-          renderOverlay();
-        } else {
-          shopNotice = `${res.reason || 'Cannot purchase that upgrade'} — you have ${computeUnspentPoints(saveDoc)} unspent pts.`;
-          audio.playUiBeep(220, 0.09);
           renderOverlay();
         }
       };
     }
     document.getElementById('btn-up-back').onclick = () => {
-      shopNotice = '';
       screen = 'title';
       renderOverlay();
     };
@@ -746,7 +701,6 @@ function renderOverlay() {
         choiceLocked = true;
         audio.unlockFromGesture();
         pickOpponent(runState, btn.dataset.opp);
-        persistRunSnapshot();
         beginCurrentMatch();
       };
     }
@@ -784,7 +738,6 @@ function renderOverlay() {
         if (choiceLocked) return;
         choiceLocked = true;
         choosePickup(runState, btn.dataset.pickup);
-        persistRunSnapshot();
         audio.playUiBeep(820, 0.07);
         if (runState.status === 'playing') {
           beginCurrentMatch();
@@ -881,7 +834,6 @@ function renderOverlay() {
     document.getElementById('btn-quit-title').onclick = () => {
       runState = null;
       matchState = null;
-      clearRunSnapshot();
       screen = 'title';
       syncAudioTrack();
       renderOverlay();
@@ -1050,10 +1002,7 @@ function renderOverlay() {
       saveDoc = res.save;
       persistSave();
       audio.applyVolumes();
-      runState = null;
-      matchState = null;
-      clearRunSnapshot();
-      saveNotice = 'Save imported (previous save backed up). Any interrupted run was cleared.';
+      saveNotice = 'Save imported (previous save backed up).';
       renderOverlay();
     };
     document.getElementById('btn-reset-save').onclick = () => {
@@ -1064,9 +1013,6 @@ function renderOverlay() {
       } else {
         resetConfirmPending = false;
         saveDoc = resetProgress(saveDoc);
-        runState = null;
-        matchState = null;
-        clearRunSnapshot();
         saveNotice = 'Progress reset (previous save backed up locally).';
         renderOverlay();
       }

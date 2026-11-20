@@ -433,16 +433,6 @@ button.small {
   .card {
     padding: 16px 18px;
   }
-  .card::before {
-    margin: -16px -18px 14px -18px;
-  }
-  .card-header {
-    flex-wrap: wrap;
-    row-gap: 4px;
-  }
-  .card h1 {
-    font-size: 22px;
-  }
 }
 
 button.pad-focus, .choice-card.pad-focus {
