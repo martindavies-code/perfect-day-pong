@@ -10,6 +10,8 @@ import {
   PICKUPS,
   UPGRADES,
   getTempoByIndex,
+  DIFFICULTY_MODES,
+  getDifficultyMode,
   createMatchScore,
   scorePoint,
   formatTennisScore,
@@ -47,6 +49,7 @@ import {
 import { createCloudManager } from './cloud.js';
 import { pickInterstitialCard } from './content.js';
 import { createInputManager } from './input.js';
+import { initDiagnostics, diagLog, exportDiagnosticsJson } from './diagnostics.js';
 import { createAudioEngine } from './audio.js';
 import { createRenderer } from './renderer.js';
 
@@ -61,7 +64,28 @@ const oppNameHud = document.getElementById('opp-name-hud');
 const tempoHud = document.getElementById('tempo-hud');
 const announcerHud = document.getElementById('announcer-hud');
 const statusHud = document.getElementById('status-hud');
-const abilityHud = document.getElementById('ability-hud');
+const speedGaugeEl = document.getElementById('speed-gauge');
+let speedGaugeLastSegs = -1;
+// Broadcast-style speed meter: 7 segments, brightness rises with fill so it
+// reads in peripheral vision without text. Updated only when the segment
+// count changes (no per-frame DOM churn).
+function updateSpeedGauge(m) {
+  if (!speedGaugeEl) return;
+  // Absolute calibration (the game's global top speed), not per-mode, so the
+  // meter means the same speed in Easy and Regular. 3D magnitude, not just
+  // depth speed, so angled shots read honestly.
+  const maxSpeed = 28 * getTempoByIndex(TEMPOS.length - 1).speedScale;
+  const speed = Math.hypot(m.ball.vx, m.ball.vy, m.ball.vz);
+  const frac = Math.max(0, Math.min(1, speed / maxSpeed));
+  const segs = Math.round(frac * 7);
+  if (segs === speedGaugeLastSegs) return;
+  speedGaugeLastSegs = segs;
+  const bars = speedGaugeEl.children;
+  for (let i = 0; i < bars.length; i++) {
+    bars[i].className = i < segs ? (i >= 5 ? 'on hot' : 'on') : '';
+  }
+  speedGaugeEl.style.setProperty('--gauge-fill', String(frac));
+}
 const pickupsHud = document.getElementById('pickups-hud');
 const controlsHint = document.getElementById('controls-hint');
 const seedHud = document.getElementById('seed-hud');
@@ -245,8 +269,9 @@ function beginCurrentMatch() {
   const up = saveDoc.upgradeLevels;
 
   const sizeMult = 1 + (up.startBatSize || 0) * 0.08 + (pickups.bat_size || 0) * 0.18;
-  const speedMult = 1 + (up.startBatSpeed || 0) * 0.1 + (pickups.bat_speed || 0) * 0.18;
-  const tempoCharges = 3 + (up.tempoCharges || 0) + (pickups.tempo_control || 0) * 2;
+  const speedMult = 1 + (up.startBatSpeed || 0) * 0.1 + (pickups.bat_speed || 0) * 0.18 + (up.tempoCharges || 0) * 0.04 + (pickups.tempo_control || 0) * 0.10;
+  const mode = getDifficultyMode(saveDoc.settings.difficulty);
+  diagLog('match', `start M${runState.matchIndex + 1} vs ${oppDef.id}`, { mode: mode.id, act: oppDef.act });
 
   const rng = mulberry32(hashSeed(`${runState.seed}-M${runState.matchIndex}`));
   matchState = {
@@ -280,8 +305,8 @@ function beginCurrentMatch() {
     phaseTimer: 0,
     serveAutoTimer: 1.0,
     serveReturnBoostLeft: (up.serveWindow || 0) > 0,
-    tempoIndex: oppDef.act === 3 ? 2 : 1,
-    tempoCharges,
+    mode,
+    tempoIndex: mode.startTempoIndex(oppDef.act),
     rallyHits: 0,
     elapsed: 0,
     gravityY: ROOM.defaultGravityY,
@@ -375,23 +400,6 @@ function syncAudioTrack() {
   });
 }
 
-function useTempoControl() {
-  if (!matchState || screen !== 'playing') return;
-  const m = matchState;
-  if (m.phase !== 'rally' || m.tempoCharges <= 0 || m.tempoIndex <= 0) return;
-  m.tempoCharges -= 1;
-  m.tempoIndex -= 1;
-  const prevTempo = getTempoByIndex(m.tempoIndex + 1);
-  const nextTempo = getTempoByIndex(m.tempoIndex);
-  const ratio = nextTempo.speedScale / prevTempo.speedScale;
-  m.ball.vx *= ratio;
-  m.ball.vy *= ratio;
-  m.ball.vz *= ratio;
-  m.announcer = `Tempo Control: ${nextTempo.label}.`;
-  audio.playUiBeep(520, 0.08);
-  syncAudioTrack();
-}
-
 function spawnParticles(x, y, z, color = '#e0533c', count = 10) {
   if (!matchState) return;
   for (let i = 0; i < count; i++) {
@@ -468,23 +476,24 @@ function updateHud() {
     const tempo = getTempoByIndex(m.tempoIndex);
     setHudText(tempoHud, `${tempo.label} // ${tempo.bpm} BPM`);
     setHudText(announcerHud, m.announcer);
-    setHudText(abilityHud, String(m.tempoCharges));
+    updateSpeedGauge(m);
   }
 
   const method = input.getLastInputMethod();
   if (method === 'gamepad') {
-    setHudText(controlsHint, 'PAD: STICK/D-PAD MOVE · A: SERVE · LB/RB: TEMPO · START: PAUSE');
+    setHudText(controlsHint, 'PAD: STICK/D-PAD MOVE · A: SERVE · START: PAUSE');
   } else if (method === 'keyboard') {
-    setHudText(controlsHint, 'KEYS: WASD/ARROWS MOVE · SPACE: SERVE · Q/SHIFT: TEMPO · ESC: PAUSE · M: MUTE');
+    setHudText(controlsHint, 'KEYS: WASD/ARROWS MOVE · SPACE: SERVE · ESC: PAUSE · M: MUTE');
   } else {
     setHudText(controlsHint, input.isPointerLocked()
-      ? 'MOUSE (LOCKED): MOVE BAT · CLICK: SERVE · R-CLICK: TEMPO · ESC: PAUSE'
-      : 'MOUSE: MOVE BAT · CLICK: SERVE & LOCK · R-CLICK: TEMPO · ESC: PAUSE');
+      ? 'MOUSE (LOCKED): MOVE BAT · CLICK: SERVE · ESC: PAUSE'
+      : 'MOUSE: MOVE BAT · CLICK: SERVE & LOCK · ESC: PAUSE');
   }
 }
 
 function finishMatch(won) {
   if (!runState || !matchState) return;
+  diagLog('match', `end vs ${matchState.oppDef.id}`, { won, playerPoints: matchState.score.playerPoints, opponentPoints: matchState.score.opponentPoints });
   const pts = matchState.score.playerPoints;
   const prevMatchIdx = runState.matchIndex;
   audio.triggerStinger(won ? 'win' : 'loss');
@@ -609,7 +618,7 @@ function renderMechanicsHtml() {
   return `<details class="mechanics-guide"><summary>Aiming, spin &amp; controls</summary>
     <div class="aim-grid"><div><strong>AIM AT CONTACT</strong><p>Hit the right / left edge of your bat to send the ball right / left. Top / bottom changes its vertical launch. The centre gives a straighter return; gravity still pulls down.</p></div>
     <div><strong>SWIPE FOR CURVE</strong><p>Moving the bat as it hits adds sideways / vertical speed and spin. Spin bends the flight and fades over time. A still edge hit also adds a smaller counter-curve. Curve Master increases spin by 35% per stack.</p></div></div>
-    <p>Mouse follows your latest position without easing. Click to serve and lock the pointer; Esc pauses and releases it. WASD / arrows or a gamepad also work. Q / Shift or right-click slows the tempo while charges remain. Bat-speed upgrades affect keys / gamepad, not direct mouse tracking.</p>
+    <p>Mouse follows your latest position without easing. Click to serve and lock the pointer; Esc pauses and releases it. WASD / arrows or a gamepad also work. The ball quickens on its own as the rally builds; the SPEED meter shows how fast it is travelling. Bat-speed upgrades affect keys / gamepad, not direct mouse tracking.</p>
     <p>Scores read YOU first, opponent second. Win four points with a two-point lead; Quick Deuce can add a deciding point. Voice is optional and never holds up a serve.</p></details>`;
 }
 function renderRouteHtml() {
@@ -697,6 +706,9 @@ function renderOverlay() {
           <span>WINS: ${saveDoc.stats.runsWon}</span>
           <span>LOU REED BEATEN: ${saveDoc.stats.louReedWins}</span>
         </div>
+        <div class="mode-row" role="group" aria-label="Difficulty">
+          ${Object.values(DIFFICULTY_MODES).map(d => `<button type="button" class="mode-card ${saveDoc.settings.difficulty === d.id ? 'sel' : ''}" data-mode="${d.id}" aria-pressed="${saveDoc.settings.difficulty === d.id}"><strong>${d.label}</strong><span>${d.plain}</span></button>`).join('')}
+        </div>
         <div class="btn-row">
           <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
           ${resumableRun ? `<button class="primary" id="btn-continue-run" type="button">Continue Run (Match ${resumableRun.matchIndex + 1} / 9, ${resumableRun.lives} licence fee${resumableRun.lives === 1 ? '' : 's'} left)</button>` : ''}
@@ -712,6 +724,17 @@ function renderOverlay() {
     `;
     wireCloudButtons();
     startTitleClock();
+    for (const btn of document.querySelectorAll('.mode-card')) {
+      btn.onclick = () => {
+        saveDoc.settings.difficulty = btn.dataset.mode;
+        persistSave();
+        for (const b of document.querySelectorAll('.mode-card')) {
+          const sel = b.dataset.mode === btn.dataset.mode;
+          b.classList.toggle('sel', sel);
+          b.setAttribute('aria-pressed', String(sel));
+        }
+      };
+    }
     document.getElementById('btn-new-run').onclick = () => {
       audio.unlockFromGesture();
       scoreAnnouncer.unlock();
@@ -1077,6 +1100,7 @@ function renderOverlay() {
         ${renderCloudBlockHtml()}
         <div class="btn-row">
           <button id="btn-export-save" type="button">Export Save (.json)</button>
+          <button id="btn-export-diag" type="button">Export Diagnostics (.json)</button>
           <button id="btn-import-save" type="button">Import Save (.json)</button>
           <input id="file-import-save" type="file" accept=".json,application/json" class="hidden" />
           <button id="btn-reset-save" type="button">${resetConfirmPending ? 'Click Again to Confirm Reset' : 'Reset Progress'}</button>
@@ -1122,6 +1146,11 @@ function renderOverlay() {
     document.getElementById('btn-export-save').onclick = () => {
       triggerDownload('perfect-day-pong-save.json', exportSaveJson(saveDoc));
       saveNotice = 'Exported save file.';
+      renderOverlay();
+    };
+    document.getElementById('btn-export-diag').onclick = () => {
+      triggerDownload('perfect-day-pong-diagnostics.json', exportDiagnosticsJson('0.2.0'));
+      saveNotice = 'Exported diagnostics (on-device log only; nothing was uploaded).';
       renderOverlay();
     };
     const fileInput = document.getElementById('file-import-save');
@@ -1249,7 +1278,7 @@ input.on('confirm', () => {
     }
   }
 });
-input.on('ability', () => useTempoControl());
+
 
 btnMute.onclick = () => {
   audio.unlockFromGesture();
@@ -1416,7 +1445,7 @@ function stepFixed(dt, inp) {
         m.shake.mag = Math.min(0.14, m.shake.mag + 0.05);
         spawnParticles(ev.x, ev.y, ev.z, ev.side === 'player' ? '#f4f2eb' : m.actDef.accent, 12);
 
-        if (m.rallyHits % 7 === 0 && m.tempoIndex < TEMPOS.length - 1) {
+        if (m.rallyHits % m.mode.rampEveryHits === 0 && m.tempoIndex < m.mode.maxTempoIndex) {
           m.tempoIndex += 1;
           syncAudioTrack();
         }
@@ -1442,7 +1471,7 @@ function stepFixed(dt, inp) {
         scoreAnnouncer.say(getSpokenScoreCall(m.score, scoreCallNames(m)));
         m.phase = 'point_pause';
         m.phaseTimer = 1.0;
-        m.tempoIndex = Math.min(TEMPOS.length - 1, (m.oppDef.act === 3 ? 2 : 1) + Math.floor(m.score.deuceCount / 2));
+        m.tempoIndex = Math.min(m.mode.maxTempoIndex, m.mode.startTempoIndex(m.oppDef.act) + Math.floor(m.score.deuceCount / 2));
         syncAudioTrack();
       }
     }
@@ -1510,5 +1539,6 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+initDiagnostics();
 renderOverlay();
 requestAnimationFrame(frame);

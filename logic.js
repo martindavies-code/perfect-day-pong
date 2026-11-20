@@ -214,6 +214,31 @@ export function getTempoByIndex(idx) {
   return TEMPOS[clamped];
 }
 
+// Difficulty modes. Lou Reed names with plain labels; regular preserves the
+// long-standing balance, easy starts one tempo lower, ramps slower and caps lower.
+export const DIFFICULTY_MODES = {
+  take_a_walk: {
+    id: 'take_a_walk',
+    label: 'TAKE A WALK',
+    plain: 'EASY',
+    startTempoIndex: (act) => (act === 3 ? 1 : 0),
+    rampEveryHits: 9,
+    maxTempoIndex: 2,
+  },
+  waiting_for_the_man: {
+    id: 'waiting_for_the_man',
+    label: 'WAITING FOR THE MAN',
+    plain: 'REGULAR',
+    startTempoIndex: (act) => (act === 3 ? 2 : 1),
+    rampEveryHits: 7,
+    maxTempoIndex: 3,
+  },
+};
+export const DEFAULT_DIFFICULTY = 'waiting_for_the_man';
+export function getDifficultyMode(id) {
+  return DIFFICULTY_MODES[id] || DIFFICULTY_MODES[DEFAULT_DIFFICULTY];
+}
+
 export function createPaddle({
   x = 0,
   y = 0,
@@ -582,7 +607,7 @@ export const ACT2_POOL = ['heather_small', 'tom_jones', 'gabrielle', 'huey_morga
 export const PICKUPS = {
   bat_size: { id: 'bat_size', name: 'Widescreen Aperture', short: 'BAT+', desc: '+18% bat size (stackable).', maxStacks: 3 },
   bat_speed: { id: 'bat_speed', name: 'Outside Broadcast Rig', short: 'SPD+', desc: '+18% bat speed (stackable).', maxStacks: 3 },
-  tempo_control: { id: 'tempo_control', name: 'Tempo Control', short: 'TMP+', desc: '+2 Tempo Control uses per match.', maxStacks: 3 },
+  tempo_control: { id: 'tempo_control', name: 'Second Engineer', short: 'ENG+', desc: '+10% bat speed this run. (Retired Tempo Control saves still read.)', maxStacks: 3 },
   extra_life: { id: 'extra_life', name: 'TV Licence Renewal', short: 'LIC+', desc: '+1 licence fee (max 5).', maxStacks: 5 },
   curve_master: { id: 'curve_master', name: 'Curve Master', short: 'CRV+', desc: '+35% ball spin curve.', maxStacks: 2 },
   shadow_sight: { id: 'shadow_sight', name: 'Shadow Sight', short: 'SHD+', desc: 'Stronger depth ring & floor cues.', maxStacks: 2 },
@@ -874,8 +899,8 @@ export const UPGRADES = {
   },
   tempoCharges: {
     id: 'tempoCharges',
-    name: 'Tempo Control Reserves',
-    desc: '+1 Tempo Control charge per match per level.',
+    name: 'Staff Engineer',
+    desc: '+4% bat speed per level. (Retired Tempo Control saves still read.)',
     costs: [20, 40, 70],
     maxLevel: 3,
   },
@@ -964,6 +989,7 @@ export function createDefaultSave(deviceId = 'local-device') {
     settings: {
       mouseSensitivity: 1.0,
       announcerEnabled: true,
+      difficulty: DEFAULT_DIFFICULTY,
       quickDeuce: false,
       spatialMode: 'hrtf',
       masterVolume: 0.8,
@@ -1049,6 +1075,7 @@ export function validateAndSanitizeSave(rawInput, { strict = false, fallbackDevi
     settings: {
       announcerEnabled: rawSet.announcerEnabled !== false,
       mouseSensitivity: clampNum(rawSet.mouseSensitivity, 0.4, 2.2, def.settings.mouseSensitivity),
+      difficulty: DIFFICULTY_MODES[rawSet.difficulty] ? rawSet.difficulty : def.settings.difficulty,
       quickDeuce: Boolean(rawSet.quickDeuce),
       spatialMode: rawSet.spatialMode === 'speakers' ? 'speakers' : 'hrtf',
       masterVolume: clampNum(rawSet.masterVolume, 0, 1, def.settings.masterVolume),
