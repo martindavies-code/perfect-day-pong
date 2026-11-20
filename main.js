@@ -1,3 +1,4 @@
+import { PERFECT_DAY_MOTIF } from './perfectday.js';
 import { applyMouseSample, getScoreCall, getSpokenScoreCall, getRunRoute } from './playtest.js';
 import { createScoreAnnouncer } from './announcer.js';
 import {
@@ -75,6 +76,7 @@ let saveDoc = initialLoad.save;
 const renderer = createRenderer(canvas);
 const input = createInputManager(canvas, () => saveDoc.settings);
 const audio = createAudioEngine(() => saveDoc.settings);
+audio.setMotif(PERFECT_DAY_MOTIF);
 
 const cloud = createCloudManager();
 const scoreAnnouncer = createScoreAnnouncer(() => saveDoc.settings, () => audio.isMuted());
