@@ -18,6 +18,14 @@
 - Overlay scroll resets when opening a different screen or returning from play. Long route/settings panels no longer leave the next screen scrolled past its heading. Same-screen feedback refreshes preserve position. A reproduced 480px route/play/settings navigation regression now passes.
 - Bigger graphics changes are intentionally deferred until Martin has checked control feel.
 
+## 20 November second playtest round
+- Score calls: level scores are "Love all", "15 all", "30 all" (on screen and spoken); unequal scores read YOU first then opponent, as the HUD does. Deuce, advantage, match point unchanged. Real tennis calls the server's score first; this game keeps YOU first to match the HUD.
+- Pick screens (opponent and pickup) no longer highlight the first card. A highlight appears only after the first keyboard or gamepad direction press (a confirm press with no highlight just starts it). Mouse and touch never show one.
+- Music: NOT done in this round. Perfect Day is Lou Reed's copyrighted composition; no MIDI or melody is bundled. See rights note below; the engine is unchanged.
+- John Birt: the player is John Birt, BBC Director-General (Wikipedia: 1992 to 2000). HUD label is BIRT (YOU). `content.js` has SOURCED cards restating the Wikipedia article (quotation marks only around wording it quotes) and SATIRE, INVENTED cards that are clearly labelled and contain no quotation marks. Source: https://en.wikipedia.org/wiki/John_Birt%2C_Baron_Birt
+- Rights note: MusicBrainz and EasySong list EMI Music/Oakfield Avenue Music/Screen Gems-EMI as publishers of Perfect Day. Free MIDI sites host others' transcriptions without a licence to redistribute, so a public game needs publisher permission or a licensed arrangement before bundling a Perfect Day melody. Card labelling is covered by tests/playtest.test.mjs.
+- Deferred to next round: fonts and general visual polish.
+
 ## Verification
 - `npm test`: logic, older win-path simulation, cloud-safety, boss-mechanics and new playtest regression tests.
 - `CHROME_PATH=/path/to/chrome npm run test:ui`: isolated temporary browser profile with mocked Google/Drive only inside the test. Covers first-sync/diverged wording, Use cloud, shop feedback, Continue Run, route layout, larger scores, zero unchanged HUD rewrites across twelve frames, OfflineAudioContext 7/7, and zero JS/HTTP errors.
