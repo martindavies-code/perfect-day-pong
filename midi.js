@@ -6,7 +6,7 @@
  */
 export const MOTIF_KEY = 'pdp.motif.v1';
 const MAX_BYTES = 512 * 1024;
-const MAX_STEPS = 128;
+const MAX_STEPS = 256; // 16 bars of 16ths: a full chorus loop fits (the built-in lead uses the whole chorus)
 
 function readVar(d, p) {
   let v = 0;
