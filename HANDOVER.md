@@ -1,28 +1,20 @@
-# HANDOVER: pull current main before any further edits
-
-The GitHub main branch is ahead of the original AG dev checkout and Drive snapshot. Do not push the old dev checkout over main. Fetch/pull main, reconcile local changes, and refresh the shared source snapshot before editing.
+# HANDOVER.md — Perfect Day Pong
 
 ## Current state
-- Live game: https://martindavies-code.github.io/perfect-day-pong/
-- Local: serve the repo with a static HTTP server. Run npm test for unit, qualified physics-route simulation, and cloud safety regressions.
-- Review fixes: unaffordable-upgrade explanation; run-boundary local snapshots and Continue Run; narrow overlay top alignment and wrapped title.
-- Continue Run preserves licences, pickups and fixture position, restarting the interrupted fixture at 0-0. It is local to the device, not part of the cloud career save.
-- Google project perfect-day-pong is configured, Drive API enabled, External/Testing, owner added as test user. Web client and exact origins are in config.js / SETUP_GOOGLE.md. No billing was enabled and the unrelated Deck Order project was not changed.
-- Actual appDataFolder write and HTTP 200 JSON readback were verified. The game's remote-pull path was verified with a temporary test marker, then the cloud test data was restored to zero stats and Quick Deuce off.
+- **Live game**: https://martindavies-code.github.io/perfect-day-pong/
+- **Local run**: serve repo with `python -m http.server 8000` -> `http://localhost:8000`.
+- **Tests**:
+  - `npm test`: runs `logic.test.js`, `winpath.sim.mjs`, `cloud-safety.test.mjs`, and `boss-mechanics.test.mjs`.
+  - `npm run test:ui`: runs `tests/ui-progression.test.mjs` (isolated local server + temporary Chrome profile + mocked GIS/Drive inside test harness only, zero production debug hooks).
+  - `tests/audio-test.html`: 7/7 `OfflineAudioContext` spatial checks.
 
-## Cloud safety fix
-- Existing cloud save plus no shared sync baseline now always opens the comparison screen. Neither side is overwritten without the user's selection, even when this device has default progress.
-- Settings changes advance revision and schedule a debounced sync.
-- Regression tests cover fresh and nonempty local saves without metadata, absent cloud, settings-style revision/sync, and backups before either conflict choice.
-- Read-before-write is still not atomic: use one active session at a time.
+## Recent changes (post-Step 8c polish)
+- **Initial-connection vs diverged-conflict wording**: `detectCloudConflict()` in `logic.js` now returns `reason: 'no_baseline'` or `'diverged'`, passed by `cloud.js` as `conflictReason`, so `main.js` renders `"Choose Your Active Save"` (`FIRST SYNC`) on first connection without sync history vs `"Cloud Save Conflict"` (`CONFLICT`) when both sides actually diverged.
+- **Lou Reed Phase 2 prowl fix & shared formation logic**: moved `computeOpponentFormation()` and `computeOpponentIdleTarget()` into `logic.js` and added `options.idleTargetX/Y` to `stepAI()`, fixing Phase 2 prowl so it is no longer overwritten to `0` on outgoing shots.
+- **Boss/formation deterministic suite**: added `tests/boss-mechanics.test.mjs` exercising real multi-box formations (`visual_ministry`, `brodsky_quartet`, `boyzone`, `elton_john`), Bowie gravity shift, Bono finite AI, and Lou Reed Phases 1–3 + prowl + Borrowed Time.
+- **Inline SVG favicon**: added in `index.html` and `tests/audio-test.html` to eliminate `/favicon.ico` 404 console noise.
 
 ## Verification and limits
-- Live title, game loop, loss/retry/game-over, settings, local resume, and 480px layout inspected.
-- Spatial audio OfflineAudioContext tests: 7/7 passed. Subjective headphone mix and physical controllers were not tested.
-- Seeded Node physics simulation covers a nine-match route, but approximates special formations and some boss mechanics with a single paddle. It is not proof of full special-mechanic beatability.
-- Isolated Chromium UI test used an otherwise unchanged copy with test-only state access and forced match finishes appended. Real opponent/pickup buttons, all three Acts, automatic fixed bosses, Lou, finale, fee award, and persisted victory stats passed. No production debug hooks were added. This verifies UI transitions, not real-time victory against every special mechanic.
-- Only browser resource errors in that UI test were missing favicon.ico (404), not game JavaScript errors.
-
-## Remaining work
-- Refresh the shared Drive source snapshot from this main branch before AG resumes.
-- Real-time balance/feel and hardware checks remain optional tuning, not a prerequisite for the verified save/layout fixes.
+- Verified: `npm test` (unit, win-path physics simulation, cloud safety regressions, boss/formation mechanics), `npm run test:ui` (desktop `1280x720` + narrow `480x700` layout, unaffordable shop feedback, mocked `FIRST SYNC` & `CONFLICT` screens, `Continue Run` after reload, `OfflineAudioContext` 7/7, 0 JS/HTTP errors), and live site inspection.
+- Not verified live: physical Bluetooth/USB gamepad hardware, subjective headphone mix, and real-time human play across every boss mechanic.
+- Preserved limits: cloud read-before-write is not atomic (one active session at a time); `Continue Run` is device-local.

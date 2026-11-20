@@ -423,7 +423,7 @@ export function createAIState({
   };
 }
 
-export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM) {
+export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM, options = {}) {
   const approaching = ball.vz > 0;
   ai.retargetTimer = Math.max(0, ai.retargetTimer - dt);
 
@@ -460,8 +460,8 @@ export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM) {
       ai.retargetTimer = 0.08;
     }
   } else {
-    ai.targetX = 0;
-    ai.targetY = 0;
+    ai.targetX = options.idleTargetX ?? 0;
+    ai.targetY = options.idleTargetY ?? 0;
   }
 
   paddle.prevX = paddle.x;
@@ -587,6 +587,56 @@ export function getLouReedPhase(scoreState) {
     return { phase: 2, name: 'Walk on the Wild Side', warm: false };
   }
   return { phase: 1, name: 'Transformer', warm: false };
+}
+
+export function computeOpponentFormation(paddle, style, elapsed, room = ROOM) {
+  if (style === 'choir') {
+    const gap = 1.45;
+    return [
+      { x: Math.max(-room.halfW + 0.4, paddle.x - gap), y: paddle.y, width: paddle.width, height: paddle.height },
+      { x: paddle.x, y: paddle.y + Math.sin(elapsed * 2.5) * 0.25, width: paddle.width, height: paddle.height },
+      { x: Math.min(room.halfW - 0.4, paddle.x + gap), y: paddle.y, width: paddle.width, height: paddle.height },
+    ];
+  }
+  if (style === 'quartet') {
+    const spread = 0.55 + (Math.sin(elapsed * 3.2) * 0.5 + 0.5) * 0.45;
+    return [
+      { x: paddle.x - spread * 1.5, y: paddle.y, width: paddle.width, height: paddle.height },
+      { x: paddle.x - spread * 0.5, y: paddle.y, width: paddle.width, height: paddle.height },
+      { x: paddle.x + spread * 0.5, y: paddle.y, width: paddle.width, height: paddle.height },
+      { x: paddle.x + spread * 1.5, y: paddle.y, width: paddle.width, height: paddle.height },
+    ];
+  }
+  if (style === 'boyzone') {
+    const wave = Math.sin(elapsed * 2.4) * 0.55;
+    return [
+      { x: paddle.x - 1.3, y: paddle.y + wave * 0.5, width: paddle.width, height: paddle.height },
+      { x: paddle.x - 0.65, y: paddle.y - wave * 0.5, width: paddle.width, height: paddle.height },
+      { x: paddle.x, y: paddle.y + wave * 0.3, width: paddle.width, height: paddle.height },
+      { x: paddle.x + 0.65, y: paddle.y - wave * 0.5, width: paddle.width, height: paddle.height },
+      { x: paddle.x + 1.3, y: paddle.y + wave * 0.5, width: paddle.width, height: paddle.height },
+    ];
+  }
+  if (style === 'piano') {
+    const keys = [];
+    for (let k = -2; k <= 2; k++) {
+      keys.push({
+        x: paddle.x + k * 0.46,
+        y: paddle.y + Math.sin(elapsed * 4.5 + k * 0.9) * 0.35,
+        width: paddle.width,
+        height: paddle.height,
+      });
+    }
+    return keys;
+  }
+  return null;
+}
+
+export function computeOpponentIdleTarget(oppDef, score, elapsed) {
+  if (oppDef?.id === 'lou_reed' && getLouReedPhase(score).phase === 2) {
+    return { idleTargetX: Math.sin(elapsed * 2.1) * 2.2, idleTargetY: 0 };
+  }
+  return { idleTargetX: 0, idleTargetY: 0 };
 }
 
 export function createRunState({ seed = generateRunSeed(), upgradeLevels = {} } = {}) {
@@ -1007,7 +1057,7 @@ export function detectCloudConflict({ localSave, remoteSave, lastSyncedRevision,
   if (!remoteSave) return { status: 'no_remote' };
   // No shared baseline: neither copy is safe to replace automatically.
   if (lastSyncedRevision == null || !lastSyncedRemoteVersion || !remoteVersion) {
-    return { status: 'conflict' };
+    return { status: 'conflict', reason: 'no_baseline' };
   }
   const localChanged = (localSave?.revision ?? 0) !== (lastSyncedRevision ?? -1);
   const remoteChanged = Boolean(lastSyncedRemoteVersion && remoteVersion && lastSyncedRemoteVersion !== remoteVersion);
@@ -1015,7 +1065,7 @@ export function detectCloudConflict({ localSave, remoteSave, lastSyncedRevision,
   if (!localChanged && !remoteChanged) return { status: 'in_sync' };
   if (localChanged && !remoteChanged) return { status: 'upload_local' };
   if (!localChanged && remoteChanged) return { status: 'pull_remote' };
-  return { status: 'conflict' };
+  return { status: 'conflict', reason: 'diverged' };
 }
 
 // ============================================================================

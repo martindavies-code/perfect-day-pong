@@ -346,6 +346,7 @@ function playSequence(seq, opts = {}) {
     remoteVersion: 'v2',
   });
   assert.equal(conflict.status, 'conflict');
+  assert.equal(conflict.reason, 'diverged');
 
   const noConflictUpload = detectCloudConflict({
     localSave: { revision: 4 },
@@ -363,7 +364,9 @@ console.log('All Step 2 logic, physics, AI, run, upgrades & save tests passed.')
 // First-device safety: no baseline must never overwrite either copy.
 for (const localSave of [createDefaultSave('fresh'), {...createDefaultSave('used'), revision: 9, totalEarned: 300}]) {
   for (const meta of [{}, {lastSyncedRevision: null, lastSyncedRemoteVersion: null}, {lastSyncedRevision: 0}]) {
-    assert.equal(detectCloudConflict({localSave, remoteSave: createDefaultSave('cloud'), remoteVersion: 'remote-v1', ...meta}).status, 'conflict');
+    const res = detectCloudConflict({localSave, remoteSave: createDefaultSave('cloud'), remoteVersion: 'remote-v1', ...meta});
+    assert.equal(res.status, 'conflict');
+    assert.equal(res.reason, 'no_baseline');
   }
 }
 assert.equal(detectCloudConflict({localSave: createDefaultSave(), remoteSave: null}).status, 'no_remote');

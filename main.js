@@ -23,6 +23,8 @@ import {
   choosePickup,
   getEffectivePickups,
   getLouReedPhase,
+  computeOpponentFormation,
+  computeOpponentIdleTarget,
   computeRunFeePoints,
   computeUnspentPoints,
   purchaseUpgrade,
@@ -367,53 +369,6 @@ function spawnParticles(x, y, z, color = '#e0533c', count = 10) {
       color,
     });
   }
-}
-
-function computeOpponentFormation(m) {
-  const p = m.opponentPaddle;
-  const style = m.oppDef.style;
-  const t = m.elapsed;
-
-  if (style === 'choir') {
-    const gap = 1.45;
-    return [
-      { x: Math.max(-ROOM.halfW + 0.4, p.x - gap), y: p.y, width: p.width, height: p.height },
-      { x: p.x, y: p.y + Math.sin(t * 2.5) * 0.25, width: p.width, height: p.height },
-      { x: Math.min(ROOM.halfW - 0.4, p.x + gap), y: p.y, width: p.width, height: p.height },
-    ];
-  }
-  if (style === 'quartet') {
-    const spread = 0.55 + (Math.sin(t * 3.2) * 0.5 + 0.5) * 0.45;
-    return [
-      { x: p.x - spread * 1.5, y: p.y, width: p.width, height: p.height },
-      { x: p.x - spread * 0.5, y: p.y, width: p.width, height: p.height },
-      { x: p.x + spread * 0.5, y: p.y, width: p.width, height: p.height },
-      { x: p.x + spread * 1.5, y: p.y, width: p.width, height: p.height },
-    ];
-  }
-  if (style === 'boyzone') {
-    const wave = Math.sin(t * 2.4) * 0.55;
-    return [
-      { x: p.x - 1.3, y: p.y + wave * 0.5, width: p.width, height: p.height },
-      { x: p.x - 0.65, y: p.y - wave * 0.5, width: p.width, height: p.height },
-      { x: p.x, y: p.y + wave * 0.3, width: p.width, height: p.height },
-      { x: p.x + 0.65, y: p.y - wave * 0.5, width: p.width, height: p.height },
-      { x: p.x + 1.3, y: p.y + wave * 0.5, width: p.width, height: p.height },
-    ];
-  }
-  if (style === 'piano') {
-    const keys = [];
-    for (let k = -2; k <= 2; k++) {
-      keys.push({
-        x: p.x + k * 0.46,
-        y: p.y + Math.sin(t * 4.5 + k * 0.9) * 0.35,
-        width: p.width,
-        height: p.height,
-      });
-    }
-    return keys;
-  }
-  return null;
 }
 
 function updateHud() {
@@ -896,14 +851,17 @@ function renderOverlay() {
   } else if (screen === 'conflict' && pendingConflict) {
     const loc = pendingConflict.localSave;
     const rem = pendingConflict.remoteSave;
+    const isInitial = pendingConflict.conflictReason === 'no_baseline';
     const sumLvls = (u) => Object.values(u || {}).reduce((a, b) => a + b, 0);
     overlay.innerHTML = `
       <div class="card">
         <div class="card-header">
-          <h2>Cloud Save Conflict</h2>
-          <span class="fac-cat">CONFLICT</span>
+          <h2>${isInitial ? 'Choose Your Active Save' : 'Cloud Save Conflict'}</h2>
+          <span class="fac-cat">${isInitial ? 'FIRST SYNC' : 'CONFLICT'}</span>
         </div>
-        <p>Both this device and Google Drive changed since your last sync. Choose which version becomes active (neither is merged; the replaced one is kept as a backup).</p>
+        <p>${isInitial
+          ? 'A save already exists in Google Drive, and this device has no previous sync history with it. Choose which version becomes active (neither is merged; the other is kept as a backup).'
+          : 'Both this device and Google Drive changed since your last sync. Choose which version becomes active (neither is merged; the replaced one is kept as a backup).'}</p>
         <div class="conflict-grid">
           <div class="conflict-col">
             <strong>THIS DEVICE</strong><br/>
@@ -1241,9 +1199,6 @@ function stepFixed(dt, inp) {
     } else if (lp.phase === 2) {
       m.ai.maxSpeed = 6.9;
       m.ai.predictionError = 0.48;
-      if (m.ball.vz < 0) {
-        m.ai.targetX = Math.sin(m.elapsed * 2.1) * 2.2;
-      }
     } else {
       m.ai.maxSpeed = 7.3;
       m.ai.predictionError = 0.43;
@@ -1254,8 +1209,9 @@ function stepFixed(dt, inp) {
     syncAudioTrack();
   }
 
-  stepAI(m.ai, m.opponentPaddle, m.ball, dt, m.rng, ROOM);
-  m.opponentBoxes = computeOpponentFormation(m);
+  const idleTarget = computeOpponentIdleTarget(m.oppDef, m.score, m.elapsed);
+  stepAI(m.ai, m.opponentPaddle, m.ball, dt, m.rng, ROOM, idleTarget);
+  m.opponentBoxes = computeOpponentFormation(m.opponentPaddle, m.oppDef.style, m.elapsed, ROOM);
 
   if (m.oppDef.style === 'bono') {
     m.bonoDecoy = { x: -m.ball.x * 0.8, z: m.ball.z };
