@@ -607,7 +607,37 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
   color: var(--ink) !important;
   font-size: 15px !important;
   line-height: 1.45;
-  margin: 0 !important;
+  margin: 10px 0 0 !important;
+}
+.title-persona-lead {
+  margin: 0;
+}
+.lead-you {
+  display: inline-block;
+  background: var(--ink);
+  color: #15161a;
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  font-size: clamp(15px, 2.2vw, 20px);
+  box-shadow: 3px 3px 0 var(--accent);
+}
+.sleeve-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+.birt-portrait {
+  width: 112px;
+  height: 112px;
+  image-rendering: pixelated;
+  border: 1px solid var(--rule);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+  background: #0a0c10;
 }
 .tx-clock {
   flex: 0 0 auto;
@@ -718,6 +748,10 @@ button.primary:focus-visible {
   .tx-clock {
     width: 64px;
     height: 64px;
+  }
+  .birt-portrait {
+    width: 80px;
+    height: 80px;
   }
   .stat-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));

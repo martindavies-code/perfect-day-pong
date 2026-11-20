@@ -246,6 +246,8 @@ try {
   await new Promise((r) => setTimeout(r, 150));
 
   assert.ok((await evalJs(cdp, 'document.querySelector(".persona")?.textContent || ""')).includes('John Birt'), 'Title names the playable character');
+  assert.ok((await evalJs(cdp, 'document.querySelector(".lead-you")?.textContent || ""')).includes('You are John Birt'), 'Title leads with You are John Birt');
+  assert.ok(await evalJs(cdp, '(() => { const i = document.querySelector(".birt-portrait"); return !!i && i.complete && i.naturalWidth > 0; })()'), 'Birt pixel portrait is present and loaded');
   assert.ok((await evalJs(cdp, 'document.getElementById("srv-player")?.parentElement.textContent')).includes('BIRT'), 'HUD labels the player as Birt');
   await maybeShot(cdp, 'title-birt.png');
   // 5. Run start -> pick opponent -> reload -> Continue Run persists

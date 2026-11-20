@@ -1,4 +1,5 @@
 import { PERFECT_DAY_MOTIF } from './perfectday.js';
+import { BIRT_PORTRAIT_SRC } from './birt-portrait.js';
 import { applyMouseSample, getScoreCall, getSpokenScoreCall, getRunRoute } from './playtest.js';
 import { createScoreAnnouncer } from './announcer.js';
 import {
@@ -639,9 +640,12 @@ function renderOverlay() {
               <span class="sleeve-meta">BBC / ROOM TEN ROGUELIKE</span>
             </div>
             <h1>Perfect Day Pong</h1>
+            <p class="title-persona-lead"><span class="lead-you">You are John Birt</span></p>
             <p class="title-standfirst">Nine matches across three Acts. True 3D tennis-scored Pong haunted by late-night continuity.</p>
           </div>
-          <svg class="tx-clock" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <div class="sleeve-side">
+            <img class="birt-portrait" src="${BIRT_PORTRAIT_SRC}" width="112" height="112" alt="Pixel-art portrait of John Birt, BBC Director-General, 1997" />
+            <svg class="tx-clock" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
             <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <g stroke="currentColor" stroke-width="1.5">
               <line x1="50" y1="10" x2="50" y2="4"/><line x1="70" y1="15.36" x2="73" y2="10.16"/><line x1="84.64" y1="30" x2="89.84" y2="27"/><line x1="90" y1="50" x2="96" y2="50"/><line x1="84.64" y1="70" x2="89.84" y2="73"/><line x1="70" y1="84.64" x2="73" y2="89.84"/><line x1="50" y1="90" x2="50" y2="96"/><line x1="30" y1="84.64" x2="27" y2="89.84"/><line x1="15.36" y1="70" x2="10.16" y2="73"/><line x1="10" y1="50" x2="4" y2="50"/><line x1="15.36" y1="30" x2="10.16" y2="27"/><line x1="30" y1="15.36" x2="27" y2="10.16"/>
@@ -650,9 +654,10 @@ function renderOverlay() {
             <line x1="50" y1="50" x2="46.45" y2="16.2" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
             <line class="tx-accent-stroke" x1="50" y1="56" x2="50" y2="6" stroke-width="1" stroke-linecap="square"/>
             <circle class="tx-accent-fill" cx="50" cy="50" r="2.4"/>
-          </svg>
+            </svg>
+          </div>
         </div>
-        <p class="note-line persona">You play as John Birt, BBC Director-General 1992 to 2000. Cards marked SOURCED restate public record; SATIRE cards are invented jokes, not quotes.</p>
+        <p class="note-line persona">John Birt: BBC Director-General 1992 to 2000. Cards marked SOURCED restate public record; SATIRE cards are invented jokes, not quotes.</p>
         <div class="stat-strip">
           <span>FEE POINTS: ${unspent}</span>
           <span>RUNS: ${saveDoc.stats.runsPlayed}</span>
