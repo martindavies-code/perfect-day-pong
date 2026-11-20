@@ -213,6 +213,11 @@ function handleCloudSyncResult(res) {
   }
 }
 
+// Score calls name the player (Birt) and the current opponent's call name.
+function scoreCallNames(m) {
+  return { player: 'Birt', opponent: (m && m.oppDef && m.oppDef.callName) || 'Opponent' };
+}
+
 function startNewRun() {
   runState = createRunState({ upgradeLevels: saveDoc.upgradeLevels });
   prevActSeen = 1;
@@ -297,8 +302,8 @@ function beginCurrentMatch() {
   };
 
   screen = 'playing';
-  matchState.announcer = `${getScoreCall(matchState.score)} Your serve.`;
-  scoreAnnouncer.say(getSpokenScoreCall(matchState.score));
+  matchState.announcer = `${getScoreCall(matchState.score, scoreCallNames(matchState))} Your serve.`;
+  scoreAnnouncer.say(getSpokenScoreCall(matchState.score, scoreCallNames(matchState)));
   overlay.classList.add('hidden');
   audio.resetRally();
   syncAudioTrack();
@@ -342,7 +347,7 @@ function launchServe() {
     });
   }
   m.phase = 'rally';
-  m.announcer = getScoreCall(m.score);
+  m.announcer = getScoreCall(m.score, scoreCallNames(m));
   audio.resetRally();
   syncAudioTrack();
 }
@@ -432,9 +437,9 @@ function updateHud() {
 
     let icons = '';
     for (let i = 0; i < runState.maxLives; i++) {
-      icons += `<span class="licence-icon ${i < runState.lives ? '' : 'lost'}" title="TV Licence"></span>`;
+      icons += `<span class="licence-icon ${i < runState.lives ? '' : 'lost'}" title="TV Licence fee"></span>`;
     }
-    setHudHtml(livesHud, `LICENCES ${icons}`);
+    setHudHtml(livesHud, `LICENCE FEES ${icons}`);
 
     const eff = getEffectivePickups(runState);
     setHudHtml(pickupsHud, Object.entries(eff)
@@ -458,7 +463,7 @@ function updateHud() {
     setHudText(scoreOppEl, fmt.opponentLabel || '-');
     setHudHtml(oppNameHud, `${m.oppDef.name.toUpperCase()} ${m.score.server === 'opponent' ? '<span id="srv-opp">*</span>' : ''}`);
     setHudText(document.getElementById('srv-player'), m.score.server === 'player' ? '*' : '');
-    const scoreCall = getScoreCall(m.score);
+    const scoreCall = getScoreCall(m.score, scoreCallNames(m));
     setHudText(statusHud, /Match point/.test(scoreCall) ? (scoreCall.includes('Match point, you') ? 'MATCH POINT: YOU' : 'MATCH POINT: OPPONENT') : fmt.statusText);
     const tempo = getTempoByIndex(m.tempoIndex);
     setHudText(tempoHud, `${tempo.label} // ${tempo.bpm} BPM`);
@@ -614,7 +619,35 @@ function renderRouteHtml() {
     <div class="route-acts">${[1, 2, 3].map(act => `<section><h3>ACT ${act}</h3><ol>${nodes.filter(n => n.act === act).map(n => `<li class="route-node ${n.current ? 'current' : ''} ${n.past ? 'past' : ''}"><span class="route-label">${n.index + 1} · ${n.past ? 'PLAYED' : n.current ? 'NEXT' : n.type === 'fixed' ? 'FIXED' : 'BRANCH'}</span><strong>${n.type === 'pool' ? 'Choose 1 of 2' : n.names.join(' / ')}</strong>${n.type === 'pool' ? `<small>Possible: ${n.names.join(', ')}</small>` : ''}</li>`).join('')}</ol></section>`).join('')}</div></details>`;
 }
 
+// Title transmission clock: one interval at a time, ticks only while the
+// title card is on screen and the tab is visible; each tick reads the clock
+// afresh, so returning from a background tab or sleep shows the right time.
+let titleClockTimer = null;
+function stopTitleClock() {
+  if (titleClockTimer) { clearInterval(titleClockTimer); titleClockTimer = null; }
+}
+function startTitleClock() {
+  stopTitleClock();
+  const svg = overlay.querySelector('.tx-clock');
+  if (!svg) return;
+  const hourHand = svg.querySelector('.tx-hour-hand');
+  const minuteHand = svg.querySelector('.tx-minute-hand');
+  const secondHand = svg.querySelector('.tx-second-hand');
+  const tick = () => {
+    const now = new Date();
+    const s = now.getSeconds() + now.getMilliseconds() / 1000;
+    const m = now.getMinutes() + s / 60;
+    const h = (now.getHours() % 12) + m / 60;
+    hourHand.setAttribute('transform', `rotate(${(h * 30).toFixed(2)} 50 50)`);
+    minuteHand.setAttribute('transform', `rotate(${(m * 6).toFixed(2)} 50 50)`);
+    secondHand.setAttribute('transform', `rotate(${(s * 6).toFixed(2)} 50 50)`);
+  };
+  tick();
+  titleClockTimer = setInterval(() => { if (!document.hidden) tick(); }, 1000);
+}
+
 function renderOverlay() {
+  stopTitleClock();
   const resetOverlayScroll = overlay.classList.contains('hidden') || lastOverlayScreen !== screen;
   if (lastOverlayScreen !== screen) overlayNavActive = false;
   lastOverlayScreen = screen;
@@ -650,9 +683,9 @@ function renderOverlay() {
             <g stroke="currentColor" stroke-width="1.5">
               <line x1="50" y1="10" x2="50" y2="4"/><line x1="70" y1="15.36" x2="73" y2="10.16"/><line x1="84.64" y1="30" x2="89.84" y2="27"/><line x1="90" y1="50" x2="96" y2="50"/><line x1="84.64" y1="70" x2="89.84" y2="73"/><line x1="70" y1="84.64" x2="73" y2="89.84"/><line x1="50" y1="90" x2="50" y2="96"/><line x1="30" y1="84.64" x2="27" y2="89.84"/><line x1="15.36" y1="70" x2="10.16" y2="73"/><line x1="10" y1="50" x2="4" y2="50"/><line x1="15.36" y1="30" x2="10.16" y2="27"/><line x1="30" y1="15.36" x2="27" y2="10.16"/>
             </g>
-            <line x1="50" y1="50" x2="48.85" y2="28" stroke="currentColor" stroke-width="3" stroke-linecap="square"/>
-            <line x1="50" y1="50" x2="46.45" y2="16.2" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
-            <line class="tx-accent-stroke" x1="50" y1="56" x2="50" y2="6" stroke-width="1" stroke-linecap="square"/>
+            <line class="tx-hour-hand" x1="50" y1="50" x2="50" y2="30" stroke="currentColor" stroke-width="3" stroke-linecap="square"/>
+            <line class="tx-minute-hand" x1="50" y1="50" x2="50" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
+            <line class="tx-accent-stroke tx-second-hand" x1="50" y1="56" x2="50" y2="8" stroke-width="1" stroke-linecap="square"/>
             <circle class="tx-accent-fill" cx="50" cy="50" r="2.4"/>
             </svg>
           </div>
@@ -666,7 +699,7 @@ function renderOverlay() {
         </div>
         <div class="btn-row">
           <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
-          ${resumableRun ? `<button class="primary" id="btn-continue-run" type="button">Continue Run (Match ${resumableRun.matchIndex + 1} / 9, ${resumableRun.lives} licence${resumableRun.lives === 1 ? '' : 's'} left)</button>` : ''}
+          ${resumableRun ? `<button class="primary" id="btn-continue-run" type="button">Continue Run (Match ${resumableRun.matchIndex + 1} / 9, ${resumableRun.lives} licence fee${resumableRun.lives === 1 ? '' : 's'} left)</button>` : ''}
           <button id="btn-upgrades" type="button">Licence Fee Review (${unspent} pts)</button>
           <button id="btn-open-settings" type="button">Settings &amp; Save</button>
         </div>
@@ -678,6 +711,7 @@ function renderOverlay() {
       </div>
     `;
     wireCloudButtons();
+    startTitleClock();
     document.getElementById('btn-new-run').onclick = () => {
       audio.unlockFromGesture();
       scoreAnnouncer.unlock();
@@ -806,7 +840,7 @@ function renderOverlay() {
           <div class="choice-title">${p.name}</div>
           <div class="choice-sub">${p.desc}</div>
           <div class="choice-cta">
-            ${id === 'extra_life' ? `LIVES: ${cur}/${runState.maxLives}` : `OWNED: ${cur}/${p.maxStacks}`}
+            ${id === 'extra_life' ? `LICENCE FEES: ${cur}/${runState.maxLives}` : `OWNED: ${cur}/${p.maxStacks}`}
           </div>
         </button>
       `;
@@ -847,9 +881,9 @@ function renderOverlay() {
       <div class="card">
         <div class="card-header">
           <h2>Licence Lapsed</h2>
-          <span class="fac-cat">-1 LIFE</span>
+          <span class="fac-cat">-1 LICENCE FEE</span>
         </div>
-        <p>Match lost to ${opp.name}. ${runState.lives} TV Licence${runState.lives === 1 ? '' : 's'} remaining. Replaying same fixture.</p>
+        <p>Match lost to ${opp.name}. ${runState.lives} licence fee${runState.lives === 1 ? '' : 's'} remaining. Replaying same fixture.</p>
         <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
         <div class="btn-row">
           <button class="primary" id="btn-retry-opp" type="button">Replay ${opp.name}</button>
@@ -1337,7 +1371,7 @@ function stepFixed(dt, inp) {
         m.phase = 'awaiting_serve';
         m.serveAutoTimer = 0.85;
         m.ball = createBall({ x: 0, y: 0.2, z: m.score.server === 'player' ? 0.8 : ROOM.opponentZ - 0.8, vz: 0 });
-        m.announcer = `${getScoreCall(m.score)} ${m.score.server === 'player' ? 'Your serve.' : 'Opponent serving.'}`;
+        m.announcer = `${getScoreCall(m.score, scoreCallNames(m))} ${m.score.server === 'player' ? 'Your serve.' : 'Opponent serving.'}`;
       }
     }
   } else if (m.phase === 'rally') {
@@ -1397,15 +1431,15 @@ function stepFixed(dt, inp) {
     if (scoredBy) {
       if (scoredBy === 'opponent' && m.secondChanceLeft > 0) {
         m.secondChanceLeft -= 1;
-        m.announcer = `Second Chance! Point replayed. ${getScoreCall(m.score)}`;
-        scoreAnnouncer.say(getSpokenScoreCall(m.score));
+        m.announcer = `Second Chance! Point replayed. ${getScoreCall(m.score, scoreCallNames(m))}`;
+        scoreAnnouncer.say(getSpokenScoreCall(m.score, scoreCallNames(m)));
         m.phase = 'awaiting_serve';
         m.serveAutoTimer = 0.85;
         m.ball = createBall({ x: 0, y: 0.2, z: m.score.server === 'player' ? 0.8 : ROOM.opponentZ - 0.8, vz: 0 });
       } else {
         m.score = scorePoint(m.score, scoredBy);
-        m.announcer = getScoreCall(m.score);
-        scoreAnnouncer.say(getSpokenScoreCall(m.score));
+        m.announcer = getScoreCall(m.score, scoreCallNames(m));
+        scoreAnnouncer.say(getSpokenScoreCall(m.score, scoreCallNames(m)));
         m.phase = 'point_pause';
         m.phaseTimer = 1.0;
         m.tempoIndex = Math.min(TEMPOS.length - 1, (m.oppDef.act === 3 ? 2 : 1) + Math.floor(m.score.deuceCount / 2));
