@@ -1,3 +1,5 @@
+import { VIEW_INSET } from './logic.js';
+
 /**
  * Unified input handler: Mouse (pointer lock + fallback), Gamepad API, Keyboard.
  * Last-used input wins; exposes edge-triggered menu/action events and bat axes.
@@ -122,8 +124,10 @@ export function createInputManager(canvas, getSettings) {
       if (rect.width > 0 && rect.height > 0) {
         const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-        pointerNormX = Math.max(-1, Math.min(1, nx * (0.95 + sens * 0.2)));
-        pointerNormY = Math.max(-1, Math.min(1, ny * (0.95 + sens * 0.2)));
+        // Divide by VIEW_INSET so the inset court's visible edges map to the
+        // paddle's full range; the margin around the view stays reachable past 1.
+        pointerNormX = Math.max(-1, Math.min(1, (nx / VIEW_INSET) * (0.95 + sens * 0.2)));
+        pointerNormY = Math.max(-1, Math.min(1, (ny / VIEW_INSET) * (0.95 + sens * 0.2)));
       }
     }
   }

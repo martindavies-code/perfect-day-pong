@@ -1,4 +1,4 @@
-import { ROOM } from './logic.js';
+import { ROOM, VIEW_INSET } from './logic.js';
 
 /**
  * 3D Perspective Projection + Room Ten / Factory-inspired Canvas 2D Renderer.
@@ -10,6 +10,8 @@ export function createRenderer(canvas) {
   let height = 720;
   let dpr = 1;
 
+  let vignetteCanvas = null;
+
   function resize() {
     const rect = canvas.getBoundingClientRect();
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -18,13 +20,34 @@ export function createRenderer(canvas) {
     canvas.width = Math.floor(width * dpr);
     canvas.height = Math.floor(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    vignetteCanvas = null;
+  }
+
+  // Cached edge vignette: built once per resize, drawn under ball, bats and HUD.
+  function drawVignette() {
+    if (!vignetteCanvas) {
+      const vc = document.createElement('canvas');
+      vc.width = width;
+      vc.height = height;
+      const vctx = vc.getContext('2d');
+      const g = vctx.createRadialGradient(
+        width * 0.5, height * 0.5, Math.min(width, height) * 0.42,
+        width * 0.5, height * 0.5, Math.max(width, height) * 0.72
+      );
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(1, 'rgba(0,0,0,0.26)');
+      vctx.fillStyle = g;
+      vctx.fillRect(0, 0, width, height);
+      vignetteCanvas = vc;
+    }
+    ctx.drawImage(vignetteCanvas, 0, 0, width, height);
   }
 
   // Perspective camera behind player bat looking down +z
   function project(x, y, z, shakeX = 0, shakeY = 0) {
     const dz = Math.max(0.45, z - ROOM.cameraZ);
     // Focal length scaled to viewport so the front plane fills ~76% of the frame cleanly
-    const focal = Math.min(width * 0.62, height * 0.92);
+    const focal = Math.min(width * 0.62, height * 0.92) * VIEW_INSET;
     const scale = focal / dz;
     const sx = width * 0.5 + (x - shakeX) * scale;
     const sy = height * 0.5 - (y - shakeY) * scale;
@@ -101,6 +124,24 @@ export function createRenderer(canvas) {
     ctx.lineTo(tl1.x, tl1.y);
     ctx.closePath();
     ctx.fill();
+    ctx.strokeStyle = 'rgba(244,242,235,0.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Side walls and ceiling: faint tonal planes (flat fills, no per-frame gradients)
+    const wallFill = (p, q, r, s, color) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(q.x, q.y);
+      ctx.lineTo(r.x, r.y);
+      ctx.lineTo(s.x, s.y);
+      ctx.closePath();
+      ctx.fill();
+    };
+    wallFill(fl0, fl1, tl1, tl0, 'rgba(60,90,140,0.10)');
+    wallFill(fr0, fr1, tr1, tr0, 'rgba(60,90,140,0.10)');
+    wallFill(tl0, tl1, tr1, tr0, 'rgba(255,255,255,0.03)');
 
     // 2. Converging Grid Lines with depth fog
     const slices = 8;
@@ -140,6 +181,8 @@ export function createRenderer(canvas) {
       drawLine3D(-hw, y, 0, -hw, y, d, sx, sy);
       drawLine3D(hw, y, 0, hw, y, d, sx, sy);
     }
+
+    drawVignette();
 
     // 3. DEPTH CUE: Moving Depth Ring along z at ball.z
     if (ball) {
