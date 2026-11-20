@@ -1005,6 +1005,10 @@ export function validateAndSanitizeSave(rawInput, { strict = false, fallbackDevi
 
 export function detectCloudConflict({ localSave, remoteSave, lastSyncedRevision, lastSyncedRemoteVersion, remoteVersion }) {
   if (!remoteSave) return { status: 'no_remote' };
+  // No shared baseline: neither copy is safe to replace automatically.
+  if (lastSyncedRevision == null || !lastSyncedRemoteVersion || !remoteVersion) {
+    return { status: 'conflict' };
+  }
   const localChanged = (localSave?.revision ?? 0) !== (lastSyncedRevision ?? -1);
   const remoteChanged = Boolean(lastSyncedRemoteVersion && remoteVersion && lastSyncedRemoteVersion !== remoteVersion);
 
