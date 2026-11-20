@@ -79,6 +79,7 @@ export function createRenderer(canvas) {
       shadowBoost = 1.0,
       bonoDecoy = null,
       bonoShades = false,
+      onFire = false,
     } = state;
 
     const sx = shake.x || 0;
@@ -324,10 +325,13 @@ export function createRenderer(canvas) {
         const tp = project(pt.x, pt.y, pt.z, sx, sy);
         const tFrac = (i + 1) / (ballTrail.length + 1);
         ctx.save();
-        ctx.fillStyle = theme.accent;
-        ctx.globalAlpha = tFrac * 0.25;
+        // ON FIRE: flame trail (deep red tail to bright yellow head) instead of accent.
+        ctx.fillStyle = onFire
+          ? (tFrac > 0.66 ? '#ffd23c' : tFrac > 0.33 ? '#ff9a3c' : '#e0533c')
+          : theme.accent;
+        ctx.globalAlpha = onFire ? tFrac * 0.55 : tFrac * 0.25;
         ctx.beginPath();
-        ctx.arc(tp.x, tp.y, Math.max(2, ball.radius * tp.scale * (0.45 + 0.4 * tFrac)), 0, Math.PI * 2);
+        ctx.arc(tp.x, tp.y, Math.max(2, ball.radius * tp.scale * (0.45 + 0.4 * tFrac) * (onFire ? 1.5 : 1)), 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
@@ -350,9 +354,15 @@ export function createRenderer(canvas) {
       }
       ctx.save();
       // Soft outer glow
-      const glow = ctx.createRadialGradient(bp.x, bp.y, bRad * 0.4, bp.x, bp.y, bRad * 2.1);
-      glow.addColorStop(0, 'rgba(244,242,235,0.16)');
-      glow.addColorStop(1, 'rgba(244,242,235,0)');
+      const glow = ctx.createRadialGradient(bp.x, bp.y, bRad * 0.4, bp.x, bp.y, bRad * (onFire ? 3.0 : 2.1));
+      if (onFire) {
+        glow.addColorStop(0, 'rgba(255,154,60,0.55)');
+        glow.addColorStop(0.55, 'rgba(224,83,60,0.28)');
+        glow.addColorStop(1, 'rgba(224,83,60,0)');
+      } else {
+        glow.addColorStop(0, 'rgba(244,242,235,0.16)');
+        glow.addColorStop(1, 'rgba(244,242,235,0)');
+      }
       ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(bp.x, bp.y, bRad * 2.1, 0, Math.PI * 2);
