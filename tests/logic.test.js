@@ -16,6 +16,17 @@ import {
   computeDopplerRate,
   quantizeToNextStep,
   createVoiceTracker,
+  createRunState,
+  pickOpponent,
+  recordMatchResult,
+  choosePickup,
+  getLouReedPhase,
+  computeRunFeePoints,
+  computeUnspentPoints,
+  purchaseUpgrade,
+  createDefaultSave,
+  validateAndSanitizeSave,
+  detectCloudConflict,
 } from '../logic.js';
 
 function playSequence(seq, opts = {}) {
@@ -215,4 +226,111 @@ function playSequence(seq, opts = {}) {
   assert.equal(vt.count(), 4, 'Voice tracker must enforce maxVoices cap');
 }
 
-console.log('All Step 1 logic, physics, AI & audio math tests passed.');
+// --- 6. Roguelike 9-match run, lives, Extra Life guarantee, Lou Reed phases ---
+{
+  let run = createRunState({ seed: 'TEST-RUN-1', upgradeLevels: { startLives: 2 } });
+  assert.equal(run.lives, 5, 'Starting lives upgrade capped at 5');
+  assert.equal(run.status, 'choose_opponent');
+
+  // Lose a match -> lose 1 life, replay same opponent
+  pickOpponent(run, run.offeredOpponents[0]);
+  const firstOpp = run.currentOpponentId;
+  recordMatchResult(run, { won: false, playerPointsScored: 2 });
+  assert.equal(run.lives, 4);
+  assert.equal(run.currentOpponentId, firstOpp);
+  assert.equal(run.status, 'playing');
+
+  // Win matches 0..7
+  for (let m = 0; m < 8; m++) {
+    if (run.status === 'choose_opponent') {
+      pickOpponent(run, run.offeredOpponents[0]);
+    }
+    assert.equal(run.status, 'playing');
+    if (m === 5) assert.equal(run.currentOpponentId, 'bono');
+    if (m === 6) assert.equal(run.currentOpponentId, 'elton_john');
+    if (m === 7) assert.equal(run.currentOpponentId, 'david_bowie');
+
+    recordMatchResult(run, { won: true, playerPointsScored: 4 });
+    assert.equal(run.status, 'choose_pickup');
+    // Pick bat_size if offered, else first
+    const choice = run.offeredPickups.includes('bat_size') ? 'bat_size' : run.offeredPickups[0];
+    choosePickup(run, choice);
+  }
+
+  assert.ok(run.extraLifeOffersCount >= 2, 'Must guarantee at least 2 Extra Life offers per run');
+  assert.equal(run.matchIndex, 8);
+  assert.equal(run.currentOpponentId, 'lou_reed');
+  assert.equal(run.status, 'playing');
+
+  // Win Lou Reed
+  recordMatchResult(run, { won: true, playerPointsScored: 4 });
+  assert.equal(run.status, 'won');
+  assert.equal(run.beatLouReed, true);
+
+  const fp = computeRunFeePoints(run);
+  assert.ok(fp >= 9 * 10 + 38 + 2 * 5 + 50, `Unexpected Fee Points total: ${fp}`);
+}
+
+// Lou Reed phases by scoreline
+{
+  let s = createMatchScore();
+  assert.equal(getLouReedPhase(s).phase, 1);
+  s = scorePoint(s, 'player'); // 15-0
+  assert.equal(getLouReedPhase(s).phase, 1);
+  s = scorePoint(s, 'player'); // 30-0 -> Phase 2
+  assert.equal(getLouReedPhase(s).phase, 2);
+  s = scorePoint(s, 'player'); // 40-0 -> Phase 3
+  assert.equal(getLouReedPhase(s).phase, 3);
+  assert.equal(getLouReedPhase(s).warm, true);
+}
+
+// --- 7. Fee Points, upgrades, save validation & cloud conflict ---
+{
+  let save = createDefaultSave('test-dev');
+  save.totalEarned = 50;
+  assert.equal(computeUnspentPoints(save), 50);
+
+  const p1 = purchaseUpgrade(save, 'startBatSize');
+  assert.equal(p1.ok, true);
+  save = p1.save;
+  assert.equal(computeUnspentPoints(save), 35);
+
+  const tooExpensive = purchaseUpgrade(save, 'startLives'); // costs 40, only 35 left
+  assert.equal(tooExpensive.ok, false);
+
+  // Strict import rejects unknown keys and negative unspent balance
+  const badKey = validateAndSanitizeSave({ totalEarned: 100, bogus: 1 }, { strict: true });
+  assert.equal(badKey.ok, false);
+
+  const badNeg = validateAndSanitizeSave(
+    { totalEarned: 5, upgradeLevels: { startBatSize: 3 } },
+    { strict: true }
+  );
+  assert.equal(badNeg.ok, false);
+
+  // Corrupt non-strict load falls back safely
+  const corrupt = validateAndSanitizeSave('not an object', { strict: false });
+  assert.equal(corrupt.ok, false);
+  assert.equal(corrupt.save.totalEarned, 0);
+
+  // Cloud conflict detection
+  const conflict = detectCloudConflict({
+    localSave: { revision: 4 },
+    remoteSave: { revision: 5 },
+    lastSyncedRevision: 3,
+    lastSyncedRemoteVersion: 'v1',
+    remoteVersion: 'v2',
+  });
+  assert.equal(conflict.status, 'conflict');
+
+  const noConflictUpload = detectCloudConflict({
+    localSave: { revision: 4 },
+    remoteSave: { revision: 3 },
+    lastSyncedRevision: 3,
+    lastSyncedRemoteVersion: 'v1',
+    remoteVersion: 'v1',
+  });
+  assert.equal(noConflictUpload.status, 'upload_local');
+}
+
+console.log('All Step 2 logic, physics, AI, run, upgrades & save tests passed.');

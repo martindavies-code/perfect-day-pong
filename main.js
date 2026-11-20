@@ -1,6 +1,10 @@
 import {
   ROOM,
   TEMPOS,
+  ACTS,
+  OPPONENTS,
+  PICKUPS,
+  UPGRADES,
   getTempoByIndex,
   createMatchScore,
   scorePoint,
@@ -13,13 +17,29 @@ import {
   stepAI,
   mulberry32,
   hashSeed,
+  createRunState,
+  pickOpponent,
+  recordMatchResult,
+  choosePickup,
+  getEffectivePickups,
+  getLouReedPhase,
+  computeRunFeePoints,
+  computeUnspentPoints,
+  purchaseUpgrade,
 } from './logic.js';
+import {
+  loadLocalSave,
+  saveLocalSave,
+} from './storage.js';
 import { createInputManager } from './input.js';
 import { createAudioEngine } from './audio.js';
 import { createRenderer } from './renderer.js';
 
 const canvas = document.getElementById('game-canvas');
 const overlay = document.getElementById('screen-overlay');
+const catBadge = document.getElementById('cat-badge');
+const topTitle = document.getElementById('top-title');
+const livesHud = document.getElementById('lives-hud');
 const scorePlayerEl = document.getElementById('score-player');
 const scoreOppEl = document.getElementById('score-opp');
 const oppNameHud = document.getElementById('opp-name-hud');
@@ -27,65 +47,112 @@ const tempoHud = document.getElementById('tempo-hud');
 const announcerHud = document.getElementById('announcer-hud');
 const statusHud = document.getElementById('status-hud');
 const abilityHud = document.getElementById('ability-hud');
+const pickupsHud = document.getElementById('pickups-hud');
 const controlsHint = document.getElementById('controls-hint');
+const seedHud = document.getElementById('seed-hud');
 const padHint = document.getElementById('pad-hint');
 const audioStatusEl = document.getElementById('audio-status');
 const btnMute = document.getElementById('btn-mute');
 const btnSettings = document.getElementById('btn-settings');
 const btnPause = document.getElementById('btn-pause');
 
-const settings = {
-  mouseSensitivity: 1.0,
-  quickDeuce: false,
-  spatialMode: 'hrtf',
-  masterVolume: 0.8,
-  musicVolume: 0.42,
-  sfxVolume: 0.88,
-};
+const initialLoad = loadLocalSave();
+let saveDoc = initialLoad.save;
 
 const renderer = createRenderer(canvas);
-const input = createInputManager(canvas, () => settings);
-const audio = createAudioEngine(() => settings);
+const input = createInputManager(canvas, () => saveDoc.settings);
+const audio = createAudioEngine(() => saveDoc.settings);
 
-let screen = 'title'; // 'title' | 'playing' | 'paused' | 'settings' | 'match_over'
+// Screens: 'title' | 'upgrades' | 'choose_opponent' | 'playing' | 'paused' | 'choose_pickup' | 'match_lost_life' | 'run_end' | 'settings'
+let screen = 'title';
 let prevScreenBeforeSettings = 'title';
+let runState = null;
 let matchState = null;
+let lastRunSummary = null;
 
-function createSingleMatch(seedStr = 'PDP-001') {
-  const rng = mulberry32(hashSeed(seedStr));
-  return {
+function persistSave() {
+  saveLocalSave(saveDoc);
+}
+
+function startNewRun() {
+  runState = createRunState({ upgradeLevels: saveDoc.upgradeLevels });
+  if (runState.status === 'playing') {
+    beginCurrentMatch();
+  } else {
+    screen = 'choose_opponent';
+    renderOverlay();
+  }
+}
+
+function beginCurrentMatch() {
+  if (!runState) return;
+  const oppDef = OPPONENTS[runState.currentOpponentId];
+  const actDef = ACTS[(oppDef.act || 1) - 1] || ACTS[0];
+  const pickups = getEffectivePickups(runState);
+  const up = saveDoc.upgradeLevels;
+
+  const sizeMult = 1 + (up.startBatSize || 0) * 0.08 + (pickups.bat_size || 0) * 0.18;
+  const speedMult = 1 + (up.startBatSpeed || 0) * 0.1 + (pickups.bat_speed || 0) * 0.18;
+  const tempoCharges = 3 + (up.tempoCharges || 0) + (pickups.tempo_control || 0) * 2;
+
+  const rng = mulberry32(hashSeed(`${runState.seed}-M${runState.matchIndex}`));
+  matchState = {
     rng,
-    score: createMatchScore({ quickDeuce: settings.quickDeuce, firstServer: 'player' }),
-    playerPaddle: createPaddle({ width: 1.6, height: 1.15 }),
-    opponentPaddle: createPaddle({ width: 1.6, height: 1.15 }),
+    oppDef,
+    actDef,
+    theme: {
+      bg: actDef.bg,
+      accent: actDef.accent,
+      opponentColor: actDef.opponentColor,
+    },
+    pickups,
+    playerSpeedMult: speedMult,
+    spinMultiplier: 1 + (pickups.curve_master || 0) * 0.35,
+    shadowBoost: 1 + (pickups.shadow_sight || 0) * 0.35,
+    secondChanceLeft: pickups.second_chance ? 1 : 0,
+    stickyTimer: 0,
+    stickyEnabled: Boolean(pickups.sticky_bat),
+    score: createMatchScore({ quickDeuce: saveDoc.settings.quickDeuce, firstServer: 'player' }),
+    playerPaddle: createPaddle({ width: 1.55 * sizeMult, height: 1.1 * sizeMult }),
+    opponentPaddle: createPaddle({ width: oppDef.width, height: oppDef.height }),
+    opponentBoxes: null,
     ai: createAIState({
-      reactionDelayMs: 175,
-      maxSpeed: 6.4,
-      predictionError: 0.58,
-      missChance: 0.08,
+      reactionDelayMs: oppDef.reactionDelayMs,
+      maxSpeed: oppDef.maxSpeed,
+      predictionError: oppDef.predictionError,
+      missChance: oppDef.missChance,
     }),
     ball: createBall({ x: 0, y: 0.25, z: 0.9, vx: 0, vy: 0, vz: 0 }),
-    phase: 'awaiting_serve', // 'awaiting_serve' | 'rally' | 'point_pause' | 'done'
+    phase: 'awaiting_serve',
     phaseTimer: 0,
-    serveAutoTimer: 1.1,
-    tempoIndex: 1, // starts at ANDANTE
-    tempoCharges: 3,
+    serveAutoTimer: 1.0,
+    serveReturnBoostLeft: (up.serveWindow || 0) > 0,
+    tempoIndex: oppDef.act === 3 ? 2 : 1,
+    tempoCharges,
     rallyHits: 0,
+    elapsed: 0,
+    gravityY: ROOM.defaultGravityY,
+    bowieGravityShifted: false,
+    hueyShiftedThisFlight: false,
+    isWarmPhase: false,
     flashes: [],
     particles: [],
     ballTrail: [],
     shake: { x: 0, y: 0, mag: 0 },
-    announcer: 'Viewer to serve. Click or press A / Space.',
+    bonoDecoy: null,
+    bonoShades: oppDef.style === 'bono',
+    opponentStyle: oppDef.style,
+    announcer:
+      runState.currentOpponentId === 'lou_reed' && runState.borrowedPickupId
+        ? `Lou Reed borrows ${PICKUPS[runState.borrowedPickupId].name}. Serve when ready.`
+        : `${oppDef.name} — ${oppDef.vibe}`,
   };
-}
 
-function startMatch() {
-  matchState = createSingleMatch(String(Date.now()));
   screen = 'playing';
   overlay.classList.add('hidden');
   audio.resetRally();
   syncAudioTrack();
-  renderOverlay();
+  updateHud();
 }
 
 function launchServe() {
@@ -94,27 +161,33 @@ function launchServe() {
   const isPlayerServe = m.score.server === 'player';
   const deuceBoost = 1 + m.score.deuceCount * 0.06;
   const tempo = getTempoByIndex(m.tempoIndex);
-  const baseZ = 12.2 * tempo.speedScale * deuceBoost;
+  const actBase = 11.4 + (m.oppDef.act - 1) * 0.9;
+  const baseZ = actBase * tempo.speedScale * deuceBoost;
 
   m.rallyHits = 0;
   m.ballTrail = [];
+  m.stickyTimer = 0;
+  m.hueyShiftedThisFlight = false;
+  m.ai.wasApproaching = false;
+
   if (isPlayerServe) {
     m.ball = createBall({
       x: m.playerPaddle.x * 0.5,
       y: Math.max(-1.2, Math.min(1.2, m.playerPaddle.y * 0.5 + 0.2)),
       z: 0.55,
-      vx: (m.rng() - 0.5) * 3.8,
-      vy: 1.2 + (m.rng() - 0.5) * 1.4,
+      vx: (m.rng() - 0.5) * 3.6,
+      vy: 1.25 + (m.rng() - 0.5) * 1.2,
       vz: baseZ,
     });
   } else {
+    const tomBoost = m.oppDef.id === 'tom_jones' ? 1.12 : 1.0;
     m.ball = createBall({
       x: m.opponentPaddle.x * 0.5,
       y: 0.35,
       z: ROOM.opponentZ - 0.55,
-      vx: (m.rng() - 0.5) * 4.2,
-      vy: 1.2 + (m.rng() - 0.5) * 1.4,
-      vz: -baseZ,
+      vx: (m.rng() - 0.5) * 4.0,
+      vy: 1.25 + (m.rng() - 0.5) * 1.2,
+      vz: -baseZ * tomBoost,
     });
   }
   m.phase = 'rally';
@@ -132,12 +205,13 @@ function syncAudioTrack() {
   const fmt = formatTennisScore(m.score);
   const tempo = getTempoByIndex(m.tempoIndex);
   const intensity = Math.max(m.score.playerPoints, m.score.opponentPoints) >= 2 ? 1 : 0;
+  const actRoots = [45, 43, 41]; // A2, G2, F2
   audio.setMatchState({
     playing: screen === 'playing' && m.phase !== 'done',
     bpm: tempo.bpm,
     intensity,
     deuce: fmt.isDeuce,
-    root: 45,
+    root: actRoots[(m.oppDef.act || 1) - 1] || 45,
   });
 }
 
@@ -147,7 +221,6 @@ function useTempoControl() {
   if (m.phase !== 'rally' || m.tempoCharges <= 0 || m.tempoIndex <= 0) return;
   m.tempoCharges -= 1;
   m.tempoIndex -= 1;
-  // Scale active ball velocity down one tempo step
   const prevTempo = getTempoByIndex(m.tempoIndex + 1);
   const nextTempo = getTempoByIndex(m.tempoIndex);
   const ratio = nextTempo.speedScale / prevTempo.speedScale;
@@ -163,17 +236,62 @@ function spawnParticles(x, y, z, color = '#e0533c', count = 10) {
   if (!matchState) return;
   for (let i = 0; i < count; i++) {
     matchState.particles.push({
-      x,
-      y,
-      z,
+      x, y, z,
       vx: (Math.random() - 0.5) * 5.5,
       vy: (Math.random() - 0.5) * 5.5,
       vz: (Math.random() - 0.5) * 4.0,
-      size: 0.09 + Math.random() * 0.08,
+      size: 0.08 + Math.random() * 0.08,
       life: 1.0,
       color,
     });
   }
+}
+
+function computeOpponentFormation(m) {
+  const p = m.opponentPaddle;
+  const style = m.oppDef.style;
+  const t = m.elapsed;
+
+  if (style === 'choir') {
+    const gap = 1.45;
+    return [
+      { x: Math.max(-ROOM.halfW + 0.4, p.x - gap), y: p.y, width: p.width, height: p.height },
+      { x: p.x, y: p.y + Math.sin(t * 2.5) * 0.25, width: p.width, height: p.height },
+      { x: Math.min(ROOM.halfW - 0.4, p.x + gap), y: p.y, width: p.width, height: p.height },
+    ];
+  }
+  if (style === 'quartet') {
+    const spread = 0.55 + (Math.sin(t * 3.2) * 0.5 + 0.5) * 0.45;
+    return [
+      { x: p.x - spread * 1.5, y: p.y, width: p.width, height: p.height },
+      { x: p.x - spread * 0.5, y: p.y, width: p.width, height: p.height },
+      { x: p.x + spread * 0.5, y: p.y, width: p.width, height: p.height },
+      { x: p.x + spread * 1.5, y: p.y, width: p.width, height: p.height },
+    ];
+  }
+  if (style === 'boyzone') {
+    const wave = Math.sin(t * 2.4) * 0.55;
+    return [
+      { x: p.x - 1.3, y: p.y + wave * 0.5, width: p.width, height: p.height },
+      { x: p.x - 0.65, y: p.y - wave * 0.5, width: p.width, height: p.height },
+      { x: p.x, y: p.y + wave * 0.3, width: p.width, height: p.height },
+      { x: p.x + 0.65, y: p.y - wave * 0.5, width: p.width, height: p.height },
+      { x: p.x + 1.3, y: p.y + wave * 0.5, width: p.width, height: p.height },
+    ];
+  }
+  if (style === 'piano') {
+    const keys = [];
+    for (let k = -2; k <= 2; k++) {
+      keys.push({
+        x: p.x + k * 0.46,
+        y: p.y + Math.sin(t * 4.5 + k * 0.9) * 0.35,
+        width: p.width,
+        height: p.height,
+      });
+    }
+    return keys;
+  }
+  return null;
 }
 
 function updateHud() {
@@ -183,18 +301,48 @@ function updateHud() {
       ? 'Sound: ON'
       : 'Sound: Click / Press Key';
 
-  if (!matchState) return;
-  const m = matchState;
-  const fmt = formatTennisScore(m.score);
-  scorePlayerEl.textContent = fmt.playerLabel || '-';
-  scoreOppEl.textContent = fmt.opponentLabel || '-';
-  oppNameHud.innerHTML = `TEST SIGNAL ${m.score.server === 'opponent' ? '<span id="srv-opp">*</span>' : ''}`;
-  document.getElementById('srv-player').textContent = m.score.server === 'player' ? '*' : '';
-  statusHud.textContent = fmt.statusText;
-  const tempo = getTempoByIndex(m.tempoIndex);
-  tempoHud.textContent = `${tempo.label} // ${tempo.bpm} BPM`;
-  announcerHud.textContent = m.announcer;
-  abilityHud.textContent = String(m.tempoCharges);
+  if (runState) {
+    const actDef = ACTS[Math.min(2, Math.floor(runState.matchIndex / 3))];
+    catBadge.textContent = `${actDef.prefix}0${runState.matchIndex + 1}`;
+    catBadge.style.color = actDef.accent;
+    catBadge.style.borderColor = actDef.accent;
+    topTitle.textContent = `${actDef.title} // MATCH ${Math.min(9, runState.matchIndex + 1)} OF 9`;
+    seedHud.textContent = `SEED: ${runState.seed}`;
+
+    let icons = '';
+    for (let i = 0; i < runState.maxLives; i++) {
+      icons += `<span class="licence-icon ${i < runState.lives ? '' : 'lost'}" title="TV Licence"></span>`;
+    }
+    livesHud.innerHTML = `LICENCES ${icons}`;
+
+    const eff = getEffectivePickups(runState);
+    pickupsHud.innerHTML = Object.entries(eff)
+      .filter(([, count]) => count > 0)
+      .map(([id, count]) => `<span class="pickup-chip">${PICKUPS[id]?.short || id}${count > 1 ? 'x' + count : ''}</span>`)
+      .join('');
+  } else {
+    catBadge.textContent = 'PDP 001';
+    catBadge.style.color = '';
+    catBadge.style.borderColor = '';
+    topTitle.textContent = 'BBC / ROOM TEN — CONTINUITY TRANSMISSION';
+    livesHud.innerHTML = `FEE PTS: ${computeUnspentPoints(saveDoc)}`;
+    pickupsHud.innerHTML = '';
+    seedHud.textContent = 'SEED: —';
+  }
+
+  if (matchState) {
+    const m = matchState;
+    const fmt = formatTennisScore(m.score);
+    scorePlayerEl.textContent = fmt.playerLabel || '-';
+    scoreOppEl.textContent = fmt.opponentLabel || '-';
+    oppNameHud.innerHTML = `${m.oppDef.name.toUpperCase()} ${m.score.server === 'opponent' ? '<span id="srv-opp">*</span>' : ''}`;
+    document.getElementById('srv-player').textContent = m.score.server === 'player' ? '*' : '';
+    statusHud.textContent = fmt.statusText;
+    const tempo = getTempoByIndex(m.tempoIndex);
+    tempoHud.textContent = `${tempo.label} // ${tempo.bpm} BPM`;
+    announcerHud.textContent = m.announcer;
+    abilityHud.textContent = String(m.tempoCharges);
+  }
 
   const method = input.getLastInputMethod();
   if (method === 'gamepad') {
@@ -208,7 +356,45 @@ function updateHud() {
   }
 }
 
+function finishMatch(won) {
+  if (!runState || !matchState) return;
+  const pts = matchState.score.playerPoints;
+  recordMatchResult(runState, { won, playerPointsScored: pts });
+
+  if (runState.status === 'won' || runState.status === 'lost') {
+    const earned = computeRunFeePoints(runState);
+    saveDoc.totalEarned += earned;
+    saveDoc.revision += 1;
+    saveDoc.updatedAt = new Date().toISOString();
+    saveDoc.stats.runsPlayed += 1;
+    if (runState.status === 'won') saveDoc.stats.runsWon += 1;
+    if (runState.beatLouReed) saveDoc.stats.louReedWins += 1;
+    saveDoc.stats.matchesWon += runState.matchesWon;
+    saveDoc.stats.pointsScored += runState.pointsScored;
+    persistSave();
+
+    lastRunSummary = {
+      won: runState.status === 'won',
+      earned,
+      matchesWon: runState.matchesWon,
+      pointsScored: runState.pointsScored,
+      bossesBeaten: runState.bossesBeaten,
+      borrowedTimeBonus: runState.borrowedTimeBonus,
+      seed: runState.seed,
+    };
+    screen = 'run_end';
+    renderOverlay();
+  } else if (!won) {
+    screen = 'match_lost_life';
+    renderOverlay();
+  } else if (runState.status === 'choose_pickup') {
+    screen = 'choose_pickup';
+    renderOverlay();
+  }
+}
+
 function renderOverlay() {
+  updateHud();
   if (screen === 'playing') {
     overlay.classList.add('hidden');
     return;
@@ -216,6 +402,7 @@ function renderOverlay() {
   overlay.classList.remove('hidden');
 
   if (screen === 'title') {
+    const unspent = computeUnspentPoints(saveDoc);
     overlay.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -223,24 +410,214 @@ function renderOverlay() {
             <span class="fac-cat">PDP 001</span>
             <h1>Perfect Day Pong</h1>
           </div>
-          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">ROOM TEN // BBC CONTINUITY</span>
+          <span style="font-family:var(--mono);font-size:12px;color:var(--muted)">BBC / ROOM TEN ROGUELIKE</span>
         </div>
-        <p>First-person 3D tennis-scored Pong in a low-gravity wireframe room. Step 1 playable transmission.</p>
+        <p>Nine matches across three Acts. True 3D tennis-scored Pong haunted by late-night continuity.</p>
+        <div class="stat-strip">
+          <span>FEE POINTS: ${unspent}</span>
+          <span>RUNS: ${saveDoc.stats.runsPlayed}</span>
+          <span>WINS: ${saveDoc.stats.runsWon}</span>
+          <span>LOU REED BEATEN: ${saveDoc.stats.louReedWins}</span>
+        </div>
         <p class="note-line">Pair Bluetooth controllers in Windows first, then press any button so the browser detects it.</p>
         <p class="note-line">Headphones recommended for true 3D HRTF spatial ball &amp; impact cues.</p>
         <div class="btn-row">
-          <button class="primary" id="btn-start-match" type="button">Start Match (Enter / A)</button>
+          <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
+          <button id="btn-upgrades" type="button">Licence Fee Review (${unspent} pts)</button>
           <button id="btn-open-settings" type="button">Settings</button>
         </div>
       </div>
     `;
-    document.getElementById('btn-start-match').onclick = async () => {
+    document.getElementById('btn-new-run').onclick = async () => {
       await audio.unlockFromGesture();
-      startMatch();
+      startNewRun();
+    };
+    document.getElementById('btn-upgrades').onclick = () => {
+      screen = 'upgrades';
+      renderOverlay();
     };
     document.getElementById('btn-open-settings').onclick = () => {
       prevScreenBeforeSettings = 'title';
       screen = 'settings';
+      renderOverlay();
+    };
+  } else if (screen === 'upgrades') {
+    const unspent = computeUnspentPoints(saveDoc);
+    const rowsHtml = Object.values(UPGRADES).map((u) => {
+      const lvl = saveDoc.upgradeLevels[u.id] || 0;
+      const maxed = lvl >= u.maxLevel;
+      const cost = maxed ? null : u.costs[lvl];
+      const canBuy = !maxed && unspent >= cost;
+      return `
+        <div class="upgrade-row">
+          <div>
+            <div style="font-weight:700">${u.name} <span style="font-family:var(--mono);color:var(--accent)">LV ${lvl}/${u.maxLevel}</span></div>
+            <div class="choice-sub">${u.desc}</div>
+          </div>
+          <button class="btn-buy-upgrade ${canBuy ? 'primary' : ''}" data-up="${u.id}" ${canBuy ? '' : 'disabled'}>
+            ${maxed ? 'MAXED' : `BUY (${cost})`}
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    overlay.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <span class="fac-cat">CHARTER</span>
+            <h2>Your Licence Fee at Work</h2>
+          </div>
+          <span style="font-family:var(--mono);color:var(--accent-2)">UNSPENT: ${unspent} PTS</span>
+        </div>
+        ${rowsHtml}
+        <div class="btn-row">
+          <button class="primary" id="btn-up-back" type="button">Back to Title</button>
+        </div>
+      </div>
+    `;
+    for (const btn of overlay.querySelectorAll('.btn-buy-upgrade')) {
+      btn.onclick = () => {
+        const res = purchaseUpgrade(saveDoc, btn.dataset.up);
+        if (res.ok) {
+          saveDoc = res.save;
+          persistSave();
+          audio.playUiBeep(740, 0.06);
+          renderOverlay();
+        }
+      };
+    }
+    document.getElementById('btn-up-back').onclick = () => {
+      screen = 'title';
+      renderOverlay();
+    };
+  } else if (screen === 'choose_opponent' && runState) {
+    const actDef = ACTS[Math.min(2, Math.floor(runState.matchIndex / 3))];
+    const choicesHtml = runState.offeredOpponents.map((id) => {
+      const opp = OPPONENTS[id];
+      return `
+        <button class="choice-card btn-pick-opp" data-opp="${id}" type="button">
+          <div class="choice-title">${opp.name}</div>
+          <div class="choice-sub">${opp.vibe}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:${actDef.accent}">SELECT OPPONENT →</div>
+        </button>
+      `;
+    }).join('');
+
+    overlay.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <span class="fac-cat">${actDef.prefix}0${runState.matchIndex + 1}</span>
+            <h2>${actDef.title}</h2>
+          </div>
+          <span style="font-family:var(--mono);font-size:12px">MATCH ${runState.matchIndex + 1} / 9</span>
+        </div>
+        <p>Select the next artist on the running order.</p>
+        <div class="choice-grid">${choicesHtml}</div>
+      </div>
+    `;
+    for (const btn of overlay.querySelectorAll('.btn-pick-opp')) {
+      btn.onclick = async () => {
+        await audio.unlockFromGesture();
+        pickOpponent(runState, btn.dataset.opp);
+        beginCurrentMatch();
+      };
+    }
+  } else if (screen === 'choose_pickup' && runState) {
+    const choicesHtml = runState.offeredPickups.map((id) => {
+      const p = PICKUPS[id];
+      const cur = id === 'extra_life' ? runState.lives : (runState.pickups[id] || 0);
+      return `
+        <button class="choice-card btn-pick-up" data-pickup="${id}" type="button">
+          <div class="choice-title">${p.name}</div>
+          <div class="choice-sub">${p.desc}</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--accent-2)">
+            ${id === 'extra_life' ? `LIVES: ${cur}/${runState.maxLives}` : `OWNED: ${cur}/${p.maxStacks}`}
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    overlay.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <span class="fac-cat">PICKUP</span>
+            <h2>Charter Review — Commission</h2>
+          </div>
+          <span style="font-family:var(--mono);font-size:12px">MATCH ${runState.matchIndex + 1} WON</span>
+        </div>
+        <p>Your pickup was made possible by the unique way this bat is funded. By you.</p>
+        <div class="choice-grid">${choicesHtml}</div>
+      </div>
+    `;
+    for (const btn of overlay.querySelectorAll('.btn-pick-up')) {
+      btn.onclick = () => {
+        choosePickup(runState, btn.dataset.pickup);
+        audio.playUiBeep(820, 0.07);
+        if (runState.status === 'playing') {
+          beginCurrentMatch();
+        } else {
+          screen = 'choose_opponent';
+          renderOverlay();
+        }
+      };
+    }
+  } else if (screen === 'match_lost_life' && runState) {
+    const opp = OPPONENTS[runState.currentOpponentId];
+    overlay.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <h2>Licence Lapsed</h2>
+          <span class="fac-cat">-${1} LIFE</span>
+        </div>
+        <p>Match lost to ${opp.name}. ${runState.lives} TV Licence${runState.lives === 1 ? '' : 's'} remaining. Replaying same fixture.</p>
+        <div class="btn-row">
+          <button class="primary" id="btn-retry-opp" type="button">Replay ${opp.name}</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('btn-retry-opp').onclick = () => beginCurrentMatch();
+  } else if (screen === 'run_end' && lastRunSummary) {
+    const s = lastRunSummary;
+    overlay.innerHTML = `
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <span class="fac-cat">${s.won ? 'TRANSMISSION COMPLETE' : 'OFF AIR'}</span>
+            <h1>${s.won ? 'You Make It What It Is' : 'Licence Revoked'}</h1>
+          </div>
+          <span style="font-family:var(--mono);color:var(--accent-2)">+${s.earned} FEE PTS</span>
+        </div>
+        <p>${s.won
+          ? 'Every musical taste was catered for — only possible thanks to the unique way the BBC is paid for by you.'
+          : 'No TV Licences remaining. Return to the Licence Fee Review board to strengthen future broadcasts.'}</p>
+        <div class="stat-strip">
+          <span>SEED: ${s.seed}</span>
+          <span>MATCHES WON: ${s.matchesWon}/9</span>
+          <span>POINTS: ${s.pointsScored}</span>
+          <span>BOSSES: ${s.bossesBeaten}</span>
+          ${s.borrowedTimeBonus ? `<span>BORROWED TIME BONUS: +${s.borrowedTimeBonus}</span>` : ''}
+        </div>
+        <div class="btn-row">
+          <button class="primary" id="btn-run-again" type="button">New Run</button>
+          <button id="btn-run-upgrades" type="button">Licence Fee Review</button>
+          <button id="btn-run-title" type="button">Title Card</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('btn-run-again').onclick = () => startNewRun();
+    document.getElementById('btn-run-upgrades').onclick = () => {
+      runState = null;
+      matchState = null;
+      screen = 'upgrades';
+      renderOverlay();
+    };
+    document.getElementById('btn-run-title').onclick = () => {
+      runState = null;
+      matchState = null;
+      screen = 'title';
       renderOverlay();
     };
   } else if (screen === 'paused') {
@@ -253,9 +630,8 @@ function renderOverlay() {
         <p>The BBC apologises for the temporary interruption to this rally.</p>
         <div class="btn-row">
           <button class="primary" id="btn-resume" type="button">Resume</button>
-          <button id="btn-restart" type="button">Restart Match</button>
           <button id="btn-pause-settings" type="button">Settings</button>
-          <button id="btn-quit-title" type="button">Title Card</button>
+          <button id="btn-quit-title" type="button">Abandon Run</button>
         </div>
       </div>
     `;
@@ -264,41 +640,20 @@ function renderOverlay() {
       renderOverlay();
       syncAudioTrack();
     };
-    document.getElementById('btn-restart').onclick = () => startMatch();
     document.getElementById('btn-pause-settings').onclick = () => {
       prevScreenBeforeSettings = 'paused';
       screen = 'settings';
       renderOverlay();
     };
     document.getElementById('btn-quit-title').onclick = () => {
-      matchState = null;
-      screen = 'title';
-      syncAudioTrack();
-      renderOverlay();
-    };
-  } else if (screen === 'match_over' && matchState) {
-    const won = matchState.score.winner === 'player';
-    overlay.innerHTML = `
-      <div class="card">
-        <div class="card-header">
-          <h2>${won ? 'Game Viewer' : 'Licence Lapsed'}</h2>
-          <span class="fac-cat">${won ? 'WIN' : 'LOSS'}</span>
-        </div>
-        <p>${won ? 'You make it what it is. Clean match victory.' : 'The broadcast continues without you.'}</p>
-        <div class="btn-row">
-          <button class="primary" id="btn-play-again" type="button">Play Again (Enter / A)</button>
-          <button id="btn-back-title" type="button">Title Card</button>
-        </div>
-      </div>
-    `;
-    document.getElementById('btn-play-again').onclick = () => startMatch();
-    document.getElementById('btn-back-title').onclick = () => {
+      runState = null;
       matchState = null;
       screen = 'title';
       syncAudioTrack();
       renderOverlay();
     };
   } else if (screen === 'settings') {
+    const st = saveDoc.settings;
     overlay.innerHTML = `
       <div class="card">
         <div class="card-header">
@@ -306,31 +661,31 @@ function renderOverlay() {
           <span class="fac-cat">PDP CFG</span>
         </div>
         <div class="setting-row">
-          <label for="set-sens">Mouse Sensitivity (<span id="val-sens">${settings.mouseSensitivity.toFixed(2)}</span>)</label>
-          <input id="set-sens" type="range" min="0.4" max="2.2" step="0.05" value="${settings.mouseSensitivity}" />
+          <label for="set-sens">Mouse Sensitivity (<span id="val-sens">${st.mouseSensitivity.toFixed(2)}</span>)</label>
+          <input id="set-sens" type="range" min="0.4" max="2.2" step="0.05" value="${st.mouseSensitivity}" />
         </div>
         <div class="setting-row">
           <label for="set-spatial">Spatial Audio</label>
           <select id="set-spatial">
-            <option value="hrtf" ${settings.spatialMode === 'hrtf' ? 'selected' : ''}>Headphones (HRTF)</option>
-            <option value="speakers" ${settings.spatialMode === 'speakers' ? 'selected' : ''}>Speakers (Stereo)</option>
+            <option value="hrtf" ${st.spatialMode === 'hrtf' ? 'selected' : ''}>Headphones (HRTF)</option>
+            <option value="speakers" ${st.spatialMode === 'speakers' ? 'selected' : ''}>Speakers (Stereo)</option>
           </select>
         </div>
         <div class="setting-row">
           <label for="set-qd">Quick Deuce (3rd deuce decides)</label>
-          <input id="set-qd" type="checkbox" ${settings.quickDeuce ? 'checked' : ''} />
+          <input id="set-qd" type="checkbox" ${st.quickDeuce ? 'checked' : ''} />
         </div>
         <div class="setting-row">
           <label for="set-master">Master Volume</label>
-          <input id="set-master" type="range" min="0" max="1" step="0.05" value="${settings.masterVolume}" />
+          <input id="set-master" type="range" min="0" max="1" step="0.05" value="${st.masterVolume}" />
         </div>
         <div class="setting-row">
           <label for="set-music">Music Volume</label>
-          <input id="set-music" type="range" min="0" max="1" step="0.05" value="${settings.musicVolume}" />
+          <input id="set-music" type="range" min="0" max="1" step="0.05" value="${st.musicVolume}" />
         </div>
         <div class="setting-row">
           <label for="set-sfx">SFX Volume</label>
-          <input id="set-sfx" type="range" min="0" max="1" step="0.05" value="${settings.sfxVolume}" />
+          <input id="set-sfx" type="range" min="0" max="1" step="0.05" value="${st.sfxVolume}" />
         </div>
         <div class="btn-row">
           <button class="primary" id="btn-settings-back" type="button">Done</button>
@@ -338,26 +693,32 @@ function renderOverlay() {
       </div>
     `;
     document.getElementById('set-sens').oninput = (e) => {
-      settings.mouseSensitivity = parseFloat(e.target.value);
-      document.getElementById('val-sens').textContent = settings.mouseSensitivity.toFixed(2);
+      st.mouseSensitivity = parseFloat(e.target.value);
+      document.getElementById('val-sens').textContent = st.mouseSensitivity.toFixed(2);
+      persistSave();
     };
     document.getElementById('set-spatial').onchange = (e) => {
-      settings.spatialMode = e.target.value;
+      st.spatialMode = e.target.value;
+      persistSave();
     };
     document.getElementById('set-qd').onchange = (e) => {
-      settings.quickDeuce = e.target.checked;
+      st.quickDeuce = e.target.checked;
+      persistSave();
     };
     document.getElementById('set-master').oninput = (e) => {
-      settings.masterVolume = parseFloat(e.target.value);
+      st.masterVolume = parseFloat(e.target.value);
       audio.applyVolumes();
+      persistSave();
     };
     document.getElementById('set-music').oninput = (e) => {
-      settings.musicVolume = parseFloat(e.target.value);
+      st.musicVolume = parseFloat(e.target.value);
       audio.applyVolumes();
+      persistSave();
     };
     document.getElementById('set-sfx').oninput = (e) => {
-      settings.sfxVolume = parseFloat(e.target.value);
+      st.sfxVolume = parseFloat(e.target.value);
       audio.applyVolumes();
+      persistSave();
     };
     document.getElementById('btn-settings-back').onclick = () => {
       screen = prevScreenBeforeSettings;
@@ -366,7 +727,6 @@ function renderOverlay() {
   }
 }
 
-// Wire topbar buttons and input events
 input.on('gesture', () => { audio.unlockFromGesture(); });
 input.on('mute', () => {
   audio.toggleMute();
@@ -396,11 +756,13 @@ input.on('padDisconnect', () => {
 });
 input.on('confirm', () => {
   if (screen === 'title') {
-    startMatch();
-  } else if (screen === 'match_over') {
-    startMatch();
+    startNewRun();
+  } else if (screen === 'match_lost_life') {
+    beginCurrentMatch();
   } else if (screen === 'playing' && matchState) {
-    if (matchState.phase === 'awaiting_serve') {
+    if (matchState.stickyTimer > 0) {
+      matchState.stickyTimer = 0; // release early on click/A
+    } else if (matchState.phase === 'awaiting_serve') {
       launchServe();
     }
     if (input.getLastInputMethod() === 'mouse') {
@@ -439,7 +801,6 @@ btnPause.onclick = () => {
 
 window.addEventListener('resize', () => renderer.resize());
 
-// Fixed-timestep loop
 const FIXED_DT = 1 / 120;
 let accumulator = 0;
 let lastTime = performance.now();
@@ -447,6 +808,7 @@ let lastTime = performance.now();
 function stepFixed(dt, inp) {
   const m = matchState;
   if (!m) return;
+  m.elapsed += dt;
 
   // Player bat control
   const pad = m.playerPaddle;
@@ -462,7 +824,7 @@ function stepFixed(dt, inp) {
     pad.x += (tx - pad.x) * alpha;
     pad.y += (ty - pad.y) * alpha;
   } else {
-    const moveSpeed = 10.5;
+    const moveSpeed = 10.5 * m.playerSpeedMult;
     pad.x += inp.velX * moveSpeed * dt;
     pad.y += inp.velY * moveSpeed * dt;
     clampPaddle(pad, ROOM);
@@ -472,10 +834,61 @@ function stepFixed(dt, inp) {
   pad.vx = (pad.x - pad.prevX) / dt;
   pad.vy = (pad.y - pad.prevY) / dt;
 
-  // AI opponent
-  stepAI(m.ai, m.opponentPaddle, m.ball, dt, m.rng, ROOM);
+  // Opponent quirks & Lou Reed phases
+  if (m.oppDef.id === 'heather_small') {
+    const fatigue = Math.max(0.75, 1 - m.score.pointNumber * 0.035);
+    m.ai.maxSpeed = m.oppDef.maxSpeed * fatigue;
+  }
+  if (m.oppDef.id === 'david_bowie' && !m.bowieGravityShifted && m.score.pointNumber >= 3) {
+    m.bowieGravityShifted = true;
+    m.gravityY = -2.35;
+    m.announcer = 'Bowie shifts room gravity slightly.';
+  }
+  if (m.oppDef.id === 'lou_reed') {
+    const lp = getLouReedPhase(m.score);
+    m.isWarmPhase = lp.warm;
+    if (lp.phase === 1) {
+      m.ai.maxSpeed = 6.2;
+      m.ai.predictionError = 0.56;
+    } else if (lp.phase === 2) {
+      m.ai.maxSpeed = 6.9;
+      m.ai.predictionError = 0.48;
+      // Prowls toward edges when ball goes away
+      if (m.ball.vz < 0) {
+        m.ai.targetX = Math.sin(m.elapsed * 2.1) * 2.2;
+      }
+    } else {
+      m.ai.maxSpeed = 7.3;
+      m.ai.predictionError = 0.43;
+      if (Math.random() < dt * 4) {
+        spawnParticles((Math.random() - 0.5) * 7, 2.3, 2 + Math.random() * 12, '#f5c7a3', 1);
+      }
+    }
+  }
 
-  // Timers & state
+  stepAI(m.ai, m.opponentPaddle, m.ball, dt, m.rng, ROOM);
+  m.opponentBoxes = computeOpponentFormation(m);
+
+  if (m.oppDef.style === 'bono') {
+    m.bonoDecoy = {
+      x: -m.ball.x * 0.8,
+      z: m.ball.z,
+    };
+  }
+
+  // Sticky bat hold
+  if (m.stickyTimer > 0) {
+    m.stickyTimer -= dt;
+    m.ball.x = pad.x;
+    m.ball.y = pad.y;
+    m.ball.z = 0.32;
+    if (m.stickyTimer <= 0) {
+      m.ball.vx += pad.vx * 0.4;
+      m.ball.vy += pad.vy * 0.3;
+    }
+    return;
+  }
+
   if (m.phase === 'awaiting_serve') {
     if (m.score.server === 'opponent') {
       m.serveAutoTimer -= dt;
@@ -488,43 +901,61 @@ function stepFixed(dt, inp) {
     if (m.phaseTimer <= 0) {
       if (m.score.winner) {
         m.phase = 'done';
-        screen = 'match_over';
         input.exitPointerLock();
         syncAudioTrack();
-        renderOverlay();
+        finishMatch(m.score.winner === 'player');
       } else {
         m.phase = 'awaiting_serve';
         m.serveAutoTimer = 0.85;
         m.ball = createBall({ x: 0, y: 0.2, z: m.score.server === 'player' ? 0.8 : ROOM.opponentZ - 0.8, vz: 0 });
         m.announcer = m.score.server === 'player'
           ? 'Your serve. Click or press A / Space.'
-          : 'Opponent serving...';
+          : `${m.oppDef.name} serving...`;
       }
     }
   } else if (m.phase === 'rally') {
+    // Huey Morgan mid-flight speed shift
+    if (m.oppDef.id === 'huey_morgan' && m.ball.vz < 0 && m.ball.z < 8.5 && !m.hueyShiftedThisFlight) {
+      m.hueyShiftedThisFlight = true;
+      m.ball.vz *= m.rng() < 0.5 ? 0.84 : 1.16;
+    }
+
     const tempo = getTempoByIndex(m.tempoIndex);
-    const { events, scoredBy } = stepBallPhysics(m.ball, m.playerPaddle, m.opponentPaddle, dt, {
-      speedMultiplier: 1.0,
+    const playerServeTolerance = m.rallyHits === 0 && m.serveReturnBoostLeft
+      ? 1 + (saveDoc.upgradeLevels.serveWindow || 0) * 0.06
+      : 1.0;
+
+    const effPaddle = playerServeTolerance > 1
+      ? { ...m.playerPaddle, width: m.playerPaddle.width * playerServeTolerance, height: m.playerPaddle.height * playerServeTolerance }
+      : m.playerPaddle;
+
+    const { events, scoredBy } = stepBallPhysics(m.ball, effPaddle, m.opponentPaddle, dt, {
+      gravityY: m.gravityY,
+      spinMultiplier: m.spinMultiplier,
       maxZSpeed: 28 * tempo.speedScale,
       minZSpeed: 9.5 * tempo.speedScale,
+      opponentBoxes: m.opponentBoxes,
+      opponentSpinBias: m.oppDef.spinBias || 0,
+      opponentReturnSpeedScale: m.oppDef.returnSpeedScale || 1.0,
     });
 
     for (const ev of events) {
       audio.playImpact(ev);
       if (ev.type === 'paddle') {
         m.rallyHits += 1;
+        m.hueyShiftedThisFlight = false;
+        if (ev.side === 'player' && m.stickyEnabled && m.rallyHits > 1) {
+          m.stickyTimer = 0.28;
+        }
         m.flashes.push({
-          x: ev.x,
-          y: ev.y,
-          z: ev.z,
+          x: ev.x, y: ev.y, z: ev.z,
           radius: 0.9,
           alpha: 0.95,
-          color: ev.side === 'player' ? '#f4f2eb' : '#e0533c',
+          color: ev.side === 'player' ? '#f4f2eb' : m.actDef.accent,
         });
         m.shake.mag = Math.min(0.14, m.shake.mag + 0.05);
-        spawnParticles(ev.x, ev.y, ev.z, ev.side === 'player' ? '#f4f2eb' : '#e0533c', 12);
+        spawnParticles(ev.x, ev.y, ev.z, ev.side === 'player' ? '#f4f2eb' : m.actDef.accent, 12);
 
-        // Gradually climb tempo on long rallies
         if (m.rallyHits % 7 === 0 && m.tempoIndex < TEMPOS.length - 1) {
           m.tempoIndex += 1;
           syncAudioTrack();
@@ -538,17 +969,24 @@ function stepFixed(dt, inp) {
     }
 
     if (scoredBy) {
-      m.score = scorePoint(m.score, scoredBy);
-      const fmt = formatTennisScore(m.score);
-      m.announcer = fmt.announcerText;
-      m.phase = 'point_pause';
-      m.phaseTimer = 1.0;
-      m.tempoIndex = Math.min(TEMPOS.length - 1, 1 + Math.floor(m.score.deuceCount / 2));
-      syncAudioTrack();
+      if (scoredBy === 'opponent' && m.secondChanceLeft > 0) {
+        m.secondChanceLeft -= 1;
+        m.announcer = 'Second Chance! Point replayed.';
+        m.phase = 'awaiting_serve';
+        m.serveAutoTimer = 0.85;
+        m.ball = createBall({ x: 0, y: 0.2, z: m.score.server === 'player' ? 0.8 : ROOM.opponentZ - 0.8, vz: 0 });
+      } else {
+        m.score = scorePoint(m.score, scoredBy);
+        const fmt = formatTennisScore(m.score);
+        m.announcer = fmt.announcerText;
+        m.phase = 'point_pause';
+        m.phaseTimer = 1.0;
+        m.tempoIndex = Math.min(TEMPOS.length - 1, (m.oppDef.act === 3 ? 2 : 1) + Math.floor(m.score.deuceCount / 2));
+        syncAudioTrack();
+      }
     }
   }
 
-  // Update visual FX
   for (let i = m.flashes.length - 1; i >= 0; i--) {
     m.flashes[i].alpha -= dt * 2.4;
     m.flashes[i].radius += dt * 2.2;

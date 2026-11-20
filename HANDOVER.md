@@ -1,18 +1,16 @@
 # HANDOVER.md — Perfect Day Pong
 
-- **Status / Step**: Step 1 complete (playable 3D match, controls, depth cues, finite AI, spatial audio + minimal groove).
+- **Status / Step**: Step 2 complete (full 9-match roguelike run, 3 Acts, pickups, Lou Reed phases, local save & upgrades).
 - **How to run**: `python -m http.server 8000` in `C:\Users\Martin\Projects\perfect-day-pong`, open `http://localhost:8000`.
-- **How to test**: `node tests/logic.test.js` (or `npm test`). All Step 1 unit tests pass; headless Chrome DOM check verified.
+- **How to test**: `node tests/logic.test.js` (or `npm test`). All Step 2 unit tests pass; headless Chrome DOM check passed.
 - **What works**:
-  - True 3D `(x,y,z)` fixed-timestep (`1/120`s) physics with swept bat-plane checks, spin curve, low gravity, 4 tempos.
-  - All 5 depth cues: perspective ball, floor shadow, converging wireframe grid with fog, moving depth ring, bat-plane flashes.
-  - Mouse (pointer lock + fallback), Gamepad (stick/d-pad/A/B/Start/bumpers, auto-pause on disconnect), Keyboard.
-  - Finite beatable AI (`>= 110ms` reaction, capped speed, prediction error, miss chance).
-  - Web Audio HRTF/Stereo spatial ball + impacts, shared clock sequencer (kick, hat, bass, arp) + quantised answers.
-- **Placeholders**: Single Test Signal opponent; roguelike 9-match run, Act themes, pickups, Fee Points/saves in Steps 2-5.
-- **Known bugs / limitations**: Live audio & gamepad require interactive browser session (`file://` unsupported for modules/gamepad).
+  - 9-match run across Act I (5-artist pool), Act II (7-artist pool + Bono mini-boss), Act III (Elton, Bowie, Lou Reed).
+  - Opponent quirks/formations (Choir, Quartet, Boyzone, Piano, Bowie gravity shift, Bono shades+decoy, Lou 3 phases + Borrowed Time).
+  - Lives (3 start, max 5), 8 pickup types (at least 2 Extra Life offers guaranteed), Fee Points + 6 permanent upgrades in `localStorage`.
+- **Placeholders**: Full BBC interstitial cards & Act ident stingers (Step 4), Export/Import UI & Google Cloud Save (Step 5), richer audio/juice (Step 6).
+- **Known bugs / limitations**: Live audio & gamepad require interactive browser; cloud save not yet wired.
 - **Next 3 steps**:
-  1. Step 2: Full 9-match run across 3 Acts, 3+ pickup types, lives (3 start, cap 5), Lou Reed boss phases, local save + Fee Points + basic upgrade board.
-  2. Step 3: Verify end-to-end, merge `dev` to `main`, create GitHub repo & enable GitHub Pages.
-  3. Step 4-7: Factory Records / BBC full theme, export/import + cloud save, richer audio/juice, QA audit & re-check.
-- **Decisions**: Vanilla ES modules + Canvas 2D 3D projection; `1 unit = 1 metre`; game `+z` mapped to audio `-z`.
+  1. Step 3: Merge `dev` to `main`, create GitHub repo `perfect-day-pong`, enable GitHub Pages from `main`, verify live URL.
+  2. Step 4: Factory Records catalogue polish, 20+ BBC interstitial cards, title/act continuity idents.
+  3. Step 5-7: Export/Import save + Google OAuth Drive `appDataFolder` cloud save, audio polish + `tests/audio-test.html`, adversarial QA (`AUDIT.md`).
+- **Decisions**: Kept `storage.js` separate from pure `logic.js`; all upgrade/save validation unit-tested in Node.

@@ -14,6 +14,7 @@
         <span id="top-title">BBC / ROOM TEN — CONTINUITY TRANSMISSION</span>
       </div>
       <div class="topbar-right">
+        <span id="lives-hud" class="pill-bar"></span>
         <span id="audio-status" class="pill-bar">Sound: Click / Press Key</span>
         <button id="btn-mute" class="small" type="button">Mute (M)</button>
         <button id="btn-settings" class="small" type="button">Settings</button>
@@ -51,11 +52,13 @@
               <span>TEMPO CTRL</span>
               <span id="ability-hud" style="font-family:var(--mono)">3</span>
             </div>
+            <div id="pickups-hud" class="pickup-chips"></div>
           </div>
         </div>
 
         <div id="hud-bottom">
           <div class="pill-bar" id="controls-hint">MOUSE: MOVE BAT · CLICK: SERVE / LOCK POINTER · R-CLICK: TEMPO CTRL</div>
+          <div class="pill-bar" id="seed-hud">SEED: —</div>
           <div class="pill-bar" id="pad-hint">PAD: NOT DETECTED</div>
         </div>
       </div>
