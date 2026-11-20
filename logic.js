@@ -575,6 +575,7 @@ export const PICKUPS = {
   shadow_sight: { id: 'shadow_sight', name: 'Shadow Sight', short: 'SHD+', desc: 'Stronger depth ring & floor cues.', maxStacks: 2 },
   second_chance: { id: 'second_chance', name: 'Second Chance', short: '2ND', desc: 'Replay your first lost point each match.', maxStacks: 1 },
   sticky_bat: { id: 'sticky_bat', name: 'Sticky Bat', short: 'STK', desc: 'Hold ball 0.3s on catch to aim.', maxStacks: 1 },
+  fee_grant: { id: 'fee_grant', name: 'Charter Honorarium', short: 'FEE', desc: '+15 Fee Points added to run reward.', maxStacks: 99 },
 };
 
 export function getLouReedPhase(scoreState) {
@@ -688,6 +689,7 @@ export function buildPickupOffer(run) {
 
   const eligible = Object.values(PICKUPS)
     .filter((p) => {
+      if (p.id === 'fee_grant') return false;
       if (p.id === 'extra_life') return run.lives < run.maxLives;
       return (run.pickups[p.id] || 0) < p.maxStacks;
     })
@@ -696,8 +698,8 @@ export function buildPickupOffer(run) {
   const shuffled = [...eligible].sort(() => r() - 0.5);
   const offers = shuffled.slice(0, choiceCount);
 
-  // Guarantee at least two Extra Life offers per run (even if at maxLives, fallback swap if <2 offers made)
-  const matchesLeft = 8 - run.matchIndex; // wins remaining before Lou Reed
+  // Guarantee at least two Extra Life offers per run
+  const matchesLeft = 8 - run.matchIndex;
   const neededLifeOffers = Math.max(0, 2 - run.extraLifeOffersCount);
   if (neededLifeOffers > 0 && matchesLeft <= neededLifeOffers && !offers.includes('extra_life')) {
     if (offers.length > 0) {
@@ -708,6 +710,9 @@ export function buildPickupOffer(run) {
   }
   if (offers.includes('extra_life')) {
     run.extraLifeOffersCount += 1;
+  }
+  if (offers.length === 0) {
+    offers.push('fee_grant');
   }
   return offers;
 }
@@ -753,6 +758,8 @@ export function choosePickup(run, pickupId) {
   }
   if (pickupId === 'extra_life') {
     run.lives = Math.min(run.maxLives, run.lives + 1);
+  } else if (pickupId === 'fee_grant') {
+    run.pickupFeeBonus = (run.pickupFeeBonus || 0) + 15;
   } else {
     const cap = PICKUPS[pickupId]?.maxStacks ?? 1;
     run.pickups[pickupId] = Math.min(cap, (run.pickups[pickupId] || 0) + 1);
@@ -824,7 +831,8 @@ export function computeRunFeePoints(run) {
     run.pointsScored * 1 +
     run.bossesBeaten * 5 +
     (run.beatLouReed ? 50 : 0) +
-    (run.borrowedTimeBonus || 0)
+    (run.borrowedTimeBonus || 0) +
+    (run.pickupFeeBonus || 0)
   );
 }
 
@@ -916,6 +924,15 @@ export function validateAndSanitizeSave(rawInput, { strict = false, fallbackDevi
       if (!ALLOWED_SAVE_KEYS.has(k)) {
         return { ok: false, reason: `Unknown key: ${k}`, save: null };
       }
+    }
+    if (
+      rawInput.schemaVersion !== undefined &&
+      (typeof rawInput.schemaVersion !== 'number' ||
+        !Number.isInteger(rawInput.schemaVersion) ||
+        rawInput.schemaVersion < 0 ||
+        rawInput.schemaVersion > SAVE_SCHEMA_VERSION)
+    ) {
+      return { ok: false, reason: `Unsupported schemaVersion: ${rawInput.schemaVersion}`, save: null };
     }
     if (typeof rawInput.totalEarned !== 'number' || !Number.isFinite(rawInput.totalEarned) || rawInput.totalEarned < 0) {
       return { ok: false, reason: 'Invalid totalEarned', save: null };

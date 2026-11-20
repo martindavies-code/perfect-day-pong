@@ -189,7 +189,16 @@ export function createRenderer(canvas) {
     }
 
     // 5. Opponent Bat (far plane z = depth)
-    drawOpponentBat(opponentPaddle, opponentBoxes, state.opponentStyle, theme, sx, sy);
+    drawOpponentBat(
+      opponentPaddle,
+      opponentBoxes,
+      state.opponentStyle,
+      theme,
+      sx,
+      sy,
+      state.elapsed || 0,
+      (state.score?.playerPoints || 0) + (state.score?.opponentPoints || 0)
+    );
 
     // 6. Ball Floor Shadow + Optional Bono faint decoy shadow (never hides real ball)
     if (bonoDecoy) {
@@ -317,7 +326,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawOpponentBat(paddle, boxes, style = 'default', theme, sx, sy) {
+  function drawOpponentBat(paddle, boxes, style = 'default', theme, sx, sy, elapsed = 0, scorePoints = 0) {
     if (!paddle) return;
     const list = boxes && boxes.length > 0
       ? boxes
@@ -333,15 +342,63 @@ export function createRenderer(canvas) {
       const bw = Math.max(6, p2.x - p1.x);
       const bh = Math.max(6, p1.y - p2.y);
 
-      ctx.fillStyle = style === 'lou'
-        ? (i % 2 === 0 ? 'rgba(244,242,235,0.86)' : 'rgba(18,19,21,0.92)')
-        : (style === 'piano'
-          ? (i % 2 === 0 ? 'rgba(244,242,235,0.85)' : 'rgba(24,25,28,0.92)')
-          : 'rgba(224, 83, 60, 0.24)');
+      const bowieColors = ['#e0533c', '#4ea8de', '#d4a84f', '#f4f2eb'];
+      const strokeCol = style === 'lou'
+        ? '#f4f2eb'
+        : style === 'bowie'
+          ? bowieColors[Math.floor(scorePoints / 2) % bowieColors.length]
+          : (theme.opponentColor || theme.accent);
+
+      if (style === 'lou') {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(244,242,235,0.88)' : 'rgba(18,19,21,0.94)';
+      } else if (style === 'piano') {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(244,242,235,0.92)' : 'rgba(20,21,24,0.95)';
+      } else if (style === 'horn') {
+        ctx.fillStyle = 'rgba(212, 168, 79, 0.25)';
+      } else {
+        ctx.fillStyle = 'rgba(224, 83, 60, 0.22)';
+      }
+
       ctx.fillRect(bx, by, bw, bh);
-      ctx.strokeStyle = style === 'lou' ? '#f4f2eb' : (theme.opponentColor || theme.accent);
+      ctx.strokeStyle = strokeCol;
       ctx.lineWidth = 2;
       ctx.strokeRect(bx, by, bw, bh);
+
+      // Abstract opponent motifs (never likenesses)
+      if (style === 'horn') {
+        // Flared brass bell lines inside wide bat
+        ctx.beginPath();
+        ctx.moveTo(bx + bw * 0.15, by + bh * 0.5);
+        ctx.lineTo(bx + bw * 0.85, by + bh * 0.15);
+        ctx.moveTo(bx + bw * 0.15, by + bh * 0.5);
+        ctx.lineTo(bx + bw * 0.85, by + bh * 0.85);
+        ctx.stroke();
+      } else if (style === 'pulse') {
+        const pulseR = (0.4 + 0.35 * (Math.sin(elapsed * 4.5) * 0.5 + 0.5)) * Math.max(bw, bh);
+        ctx.beginPath();
+        ctx.arc(bx + bw * 0.5, by + bh * 0.5, pulseR, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (style === 'bono') {
+        // Twin lens motif inside bat
+        const r = Math.min(bw * 0.2, bh * 0.35);
+        ctx.beginPath();
+        ctx.arc(bx + bw * 0.3, by + bh * 0.5, r, 0, Math.PI * 2);
+        ctx.arc(bx + bw * 0.7, by + bh * 0.5, r, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (style === 'bowie') {
+        // Sharp diagonal geometric bolt
+        ctx.beginPath();
+        ctx.moveTo(bx + bw * 0.65, by);
+        ctx.lineTo(bx + bw * 0.3, by + bh * 0.5);
+        ctx.lineTo(bx + bw * 0.7, by + bh * 0.5);
+        ctx.lineTo(bx + bw * 0.35, by + bh);
+        ctx.stroke();
+      } else if (style === 'quartet') {
+        ctx.beginPath();
+        ctx.moveTo(bx, by + bh * 0.5);
+        ctx.lineTo(bx + bw, by + bh * 0.5);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }

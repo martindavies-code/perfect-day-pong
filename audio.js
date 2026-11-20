@@ -10,7 +10,7 @@ import {
 } from './logic.js';
 
 /**
- * Procedural 3D Spatial Web Audio + Detroit House Sequencer.
+ * Procedural 3D Spatial Web Audio + Layered Detroit House Sequencer.
  * Zero external samples. Starts strictly after user gesture.
  */
 export function createAudioEngine(getSettings) {
@@ -20,13 +20,14 @@ export function createAudioEngine(getSettings) {
   let musicBus = null;
   let musicDuckGain = null;
   let sfxBus = null;
+  let delayNode = null;
+  let delayFeedback = null;
 
   // Continuous ball voice
   let ballOsc = null;
   let ballFilter = null;
   let ballGain = null;
-  let ballPanner = null; // PannerNode or StereoPannerNode
-  let ballDistGain = null;
+  let ballPanner = null;
 
   // Sequencer state
   let seqTimer = null;
@@ -36,12 +37,17 @@ export function createAudioEngine(getSettings) {
   let bpm = 124;
   let rootMidi = 45; // A2
   let rallyHits = 0;
-  let matchIntensity = 0; // 0..3
+  let matchIntensity = 0;
+  let currentAct = 1;
+  let opponentId = '';
+  let louPhase = 1;
   let isPlayingMatch = false;
   let isDeuceBreakdown = false;
   let muted = false;
   let lastQuantizedStep = -1;
   let quantizedOnStepCount = 0;
+  let fillBarsRemaining = 0;
+  let pendingStinger = null; // 'win' | 'loss' | null
 
   const tracker = createVoiceTracker({ maxVoices: 24, minSurfaceIntervalMs: 40 });
   let nextVoiceId = 1;
@@ -65,15 +71,26 @@ export function createAudioEngine(getSettings) {
       musicDuckGain = ctx.createGain();
       sfxBus = ctx.createGain();
 
+      // Subtle Detroit house tape-style echo bus
+      delayNode = ctx.createDelay(1.0);
+      delayNode.delayTime.value = (60 / 124) * 0.75; // dotted 8th feel
+      delayFeedback = ctx.createGain();
+      delayFeedback.gain.value = 0.24;
+      const delayFilter = ctx.createBiquadFilter();
+      delayFilter.type = 'lowpass';
+      delayFilter.frequency.value = 2200;
+      delayNode.connect(delayFilter);
+      delayFilter.connect(delayFeedback);
+      delayFeedback.connect(delayNode);
+      delayFilter.connect(musicBus);
+
       musicBus.connect(musicDuckGain);
       musicDuckGain.connect(masterGain);
       sfxBus.connect(masterGain);
       masterGain.connect(limiter);
       limiter.connect(ctx.destination);
 
-      // Listener at camera behind player bat facing +z (mapped to -z in Web Audio)
       setListenerPosition(0, 0, ROOM.cameraZ);
-
       initBallVoice();
       applyVolumes();
       gridStartSec = ctx.currentTime + 0.05;
@@ -118,7 +135,7 @@ export function createAudioEngine(getSettings) {
         p.rolloffFactor = 1.15;
         return { kind: 'hrtf', node: p };
       } catch {
-        // fall through to stereo
+        // fall through
       }
     }
     const sp = ctx.createStereoPanner();
@@ -167,7 +184,6 @@ export function createAudioEngine(getSettings) {
     ballOsc.type = 'triangle';
     ballOsc.frequency.value = 180;
 
-    // Highpass keeps ball clear of kick/sub-bass range
     const hp = ctx.createBiquadFilter();
     hp.type = 'highpass';
     hp.frequency.value = 175;
@@ -236,17 +252,12 @@ export function createAudioEngine(getSettings) {
     const baseFreq = 165 + Math.min(180, speed * 5.2);
     ballOsc.frequency.setTargetAtTime(baseFreq * doppler, t, 0.02);
 
-    // Brightness and presence rise smoothly as ball approaches player
     const nearFactor = Math.max(0, Math.min(1, 1 - ball.z / ROOM.depth));
-    const cutoff = 520 + nearFactor * 2600;
-    ballFilter.frequency.setTargetAtTime(cutoff, t, 0.025);
+    ballFilter.frequency.setTargetAtTime(520 + nearFactor * 2600, t, 0.025);
+    ballGain.gain.setTargetAtTime(0.032 + nearFactor * 0.055, t, 0.025);
 
-    const level = 0.032 + nearFactor * 0.055;
-    ballGain.gain.setTargetAtTime(level, t, 0.025);
-
-    // Duck music slightly when ball is in the last few metres approaching player
     if (ball.vz < 0 && dist < 7.0) {
-      musicDuckGain.gain.setTargetAtTime(0.68, t, 0.02);
+      musicDuckGain.gain.setTargetAtTime(0.66, t, 0.02);
     } else {
       musicDuckGain.gain.setTargetAtTime(1.0, t, 0.14);
     }
@@ -256,7 +267,7 @@ export function createAudioEngine(getSettings) {
     if (!ctx || !masterGain) return;
     const s = getSettings?.() || {};
     const master = muted ? 0 : (s.masterVolume ?? 0.8);
-    const music = s.musicVolume ?? 0.42; // kept below SFX so ball cues stay clear
+    const music = s.musicVolume ?? 0.42;
     const sfx = s.sfxVolume ?? 0.88;
     const t = ctx.currentTime;
     masterGain.gain.setTargetAtTime(master, t, 0.02);
@@ -329,7 +340,6 @@ export function createAudioEngine(getSettings) {
     const now = ctx.currentTime;
     const pos = { x: event.x, y: event.y, z: event.z };
 
-    // 1. IMMEDIATE physical impact (zero added delay), tuned to current track scale
     if (event.type === 'paddle') {
       const isPlayer = event.side === 'player';
       const midi = pickScaleMidi(rootMidi + (isPlayer ? 24 : 12), rallyHits, isPlayer ? 2 : 0);
@@ -351,8 +361,9 @@ export function createAudioEngine(getSettings) {
       });
       duckMusicBriefly(0.68);
       rallyHits += 1;
-
-      // 2. SEPARATE quantised musical answer on next 16th step (C2)
+      if (delayFeedback) {
+        delayFeedback.gain.setTargetAtTime(Math.min(0.42, 0.2 + rallyHits * 0.02), now, 0.05);
+      }
       scheduleQuantizedAnswer(pos, isPlayer ? 'bleep' : 'stab');
     } else if (event.type === 'wall') {
       const offset = event.surface === 'floor' ? 0 : event.surface === 'ceiling' ? 4 : 2;
@@ -375,6 +386,10 @@ export function createAudioEngine(getSettings) {
       scheduleQuantizedAnswer(pos, 'hat');
     } else if (event.type === 'miss') {
       rallyHits = 0;
+      fillBarsRemaining = 1;
+      if (delayFeedback) {
+        delayFeedback.gain.setTargetAtTime(0.2, now, 0.05);
+      }
       const isPlayerScore = event.side === 'opponent';
       triggerOneShot(pos, 4, 0.35, (out, bag) => {
         const osc = ctx.createOscillator();
@@ -402,7 +417,7 @@ export function createAudioEngine(getSettings) {
       lastQuantizedStep = q.stepIndex;
       quantizedOnStepCount = 0;
     }
-    if (quantizedOnStepCount >= 2) return; // cap 2 quantised hits per step
+    if (quantizedOnStepCount >= 2) return;
     quantizedOnStepCount += 1;
 
     const when = q.stepTime;
@@ -411,7 +426,6 @@ export function createAudioEngine(getSettings) {
 
     triggerOneShot(pos, 1, Math.max(0.25, when - ctx.currentTime + 0.2), (out, bag) => {
       if (kind === 'hat') {
-        // Crisp noise burst hat
         const bufSize = Math.floor(ctx.sampleRate * 0.045);
         const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
         const data = buf.getChannelData(0);
@@ -453,7 +467,7 @@ export function createAudioEngine(getSettings) {
     });
   }
 
-  // --- Sequencer (Bleepy Detroit House) ---
+  // --- Sequencer (Layered Bleepy Detroit House) ---
   function triggerKick(t) {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -466,6 +480,26 @@ export function createAudioEngine(getSettings) {
     g.connect(musicBus);
     osc.start(t);
     osc.stop(t + 0.25);
+  }
+
+  function triggerClap(t) {
+    const len = Math.floor(ctx.sampleRate * 0.09);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1650;
+    bp.Q.value = 1.4;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.14, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.085);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(musicBus);
+    src.start(t);
   }
 
   function triggerHat(t, open = false) {
@@ -505,36 +539,121 @@ export function createAudioEngine(getSettings) {
     osc.connect(filt);
     filt.connect(g);
     g.connect(musicBus);
+    if (isArp && delayNode) {
+      g.connect(delayNode);
+    }
     osc.start(t);
     osc.stop(t + 0.22);
+  }
+
+  function triggerChordStab(t, root, detuneCents = 6, bright = false) {
+    // Minor-7th Detroit house chord stab (root, +3, +7, +10)
+    const intervals = [0, 3, 7, 10];
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.Q.value = 3.2;
+    filt.frequency.setValueAtTime(bright ? 3200 : 1900, t);
+    filt.frequency.exponentialRampToValueAtTime(340, t + 0.26);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.06, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.27);
+    filt.connect(g);
+    g.connect(musicBus);
+    if (delayNode) g.connect(delayNode);
+
+    for (const semi of intervals) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(midiToFreq(root + 12 + semi), t);
+      osc.detune.value = (semi % 2 === 0 ? 1 : -1) * detuneCents;
+      osc.connect(filt);
+      osc.start(t);
+      osc.stop(t + 0.28);
+    }
+  }
+
+  function triggerWarmPad(t, root) {
+    const intervals = [0, 4, 7, 11]; // warm lifted major-7th pad for Lou Phase 3 / Act III
+    const filt = ctx.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.value = 1100;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.045, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 1.85);
+    filt.connect(g);
+    g.connect(musicBus);
+    for (const semi of intervals) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(midiToFreq(root + 12 + semi), t);
+      osc.connect(filt);
+      osc.start(t);
+      osc.stop(t + 1.9);
+    }
   }
 
   const BASS_PATTERN = [0, -1, 0, -1, 3, -1, 0, -1, 5, -1, 3, -1, 7, -1, 5, 3];
   const ARP_PATTERN = [12, -1, 15, 19, -1, 17, 15, -1, 12, -1, 19, -1, 22, 19, 15, -1];
 
   function scheduleStep(step, t) {
-    if (!isPlayingMatch) return;
     const s16 = step % 16;
+    if (s16 === 0 && pendingStinger) {
+      const notes = pendingStinger === 'win' ? [12, 15, 19, 24] : [12, 10, 7, 3];
+      notes.forEach((n, idx) => {
+        triggerBassOrArp(t + idx * 0.11, rootMidi + n, true);
+      });
+      pendingStinger = null;
+    }
+
+    if (!isPlayingMatch) return;
     const stepSec = 60 / bpm / 4;
     const swing = s16 % 2 === 1 ? stepSec * 0.08 : 0;
     const time = t + swing;
 
-    // Minimal groove: kick on 4s, offbeat open hat
+    const isLouDark = opponentId === 'lou_reed' && louPhase < 3;
+    const isLouWarm = opponentId === 'lou_reed' && louPhase === 3;
+    const effectiveRoot = isLouWarm ? rootMidi + 5 : rootMidi;
+
     if (!isDeuceBreakdown && s16 % 4 === 0) {
       triggerKick(time);
     }
     if (s16 % 4 === 2) {
       triggerHat(time, true);
-    } else if (s16 % 2 === 1 && (matchIntensity >= 1 || rallyHits >= 2)) {
+    } else if (s16 % 2 === 1 && (matchIntensity >= 1 || rallyHits >= 2 || currentAct >= 2)) {
       triggerHat(time, false);
     }
 
+    // Clap on 2 and 4 (and fill on point scored)
+    if (!isDeuceBreakdown && !isLouDark && (s16 === 4 || s16 === 12 || (fillBarsRemaining > 0 && s16 >= 12))) {
+      if (currentAct >= 2 || matchIntensity >= 1 || rallyHits >= 3 || fillBarsRemaining > 0) {
+        triggerClap(time);
+      }
+    }
+
     if (!isDeuceBreakdown && BASS_PATTERN[s16] >= 0) {
-      triggerBassOrArp(time, rootMidi + BASS_PATTERN[s16], false);
+      triggerBassOrArp(time, effectiveRoot + BASS_PATTERN[s16], false);
     }
 
     if ((matchIntensity >= 1 || rallyHits >= 1) && ARP_PATTERN[s16] >= 0) {
-      triggerBassOrArp(time, rootMidi + ARP_PATTERN[s16], true);
+      triggerBassOrArp(time, effectiveRoot + ARP_PATTERN[s16], true);
+    }
+
+    // Minor-7th chord stabs (Act II/III, or high rally)
+    if (!isDeuceBreakdown && !isLouDark && (currentAct >= 2 || rallyHits >= 4) && (s16 === 3 || s16 === 10)) {
+      const detune = opponentId === 'david_bowie' ? 14 : 6;
+      const bright = opponentId === 'elton_john' || isLouWarm;
+      triggerChordStab(time, effectiveRoot, detune, bright);
+    }
+
+    // Warm pad on Act III or Lou Phase 3 / Deuce breakdown
+    if (s16 === 0 && (currentAct === 3 || isLouWarm || isDeuceBreakdown)) {
+      triggerWarmPad(time, effectiveRoot);
+    }
+
+    if (s16 === 15 && fillBarsRemaining > 0) {
+      fillBarsRemaining -= 1;
     }
   }
 
@@ -543,6 +662,7 @@ export function createAudioEngine(getSettings) {
     seqTimer = setInterval(() => {
       if (!ctx || ctx.state !== 'running') return;
       const stepSec = 60 / bpm / 4;
+      if (delayNode) delayNode.delayTime.value = stepSec * 3;
       const horizon = ctx.currentTime + 0.12;
       while (nextStepTime < horizon) {
         scheduleStep(currentStep, nextStepTime);
@@ -565,6 +685,26 @@ export function createAudioEngine(getSettings) {
     g.connect(sfxBus);
     osc.start(t);
     osc.stop(t + dur + 0.01);
+  }
+
+  function playContinuityIdent(act = 1) {
+    if (!ctx || ctx.state !== 'running') return;
+    const base = act === 1 ? 57 : act === 2 ? 60 : 62;
+    const phrase = [0, 4, 7, 12];
+    const t = ctx.currentTime + 0.02;
+    phrase.forEach((semi, idx) => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(midiToFreq(base + semi), t + idx * 0.09);
+      g.gain.setValueAtTime(0.0001, t + idx * 0.09);
+      g.gain.linearRampToValueAtTime(0.08, t + idx * 0.09 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + idx * 0.09 + 0.18);
+      osc.connect(g);
+      g.connect(musicBus);
+      osc.start(t + idx * 0.09);
+      osc.stop(t + idx * 0.09 + 0.2);
+    });
   }
 
   async function unlockFromGesture() {
@@ -604,13 +744,29 @@ export function createAudioEngine(getSettings) {
     },
     isMuted: () => muted,
     applyVolumes,
-    setMatchState: ({ playing, bpm: nextBpm, intensity = 0, deuce = false, root = 45 }) => {
+    setMatchState: ({
+      playing,
+      bpm: nextBpm,
+      intensity = 0,
+      deuce = false,
+      root = 45,
+      act = 1,
+      oppId = '',
+      lou = 1,
+    }) => {
       isPlayingMatch = playing;
       if (nextBpm) bpm = nextBpm;
       matchIntensity = intensity;
       isDeuceBreakdown = deuce;
       rootMidi = root;
+      currentAct = act;
+      opponentId = oppId;
+      louPhase = lou;
     },
+    triggerStinger: (kind) => {
+      pendingStinger = kind;
+    },
+    playContinuityIdent,
     resetRally: () => {
       rallyHits = 0;
     },

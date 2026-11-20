@@ -1,16 +1,20 @@
 # HANDOVER.md — Perfect Day Pong
 
-- **Status / Step**: Step 2 complete (full 9-match roguelike run, 3 Acts, pickups, Lou Reed phases, local save & upgrades).
-- **How to run**: `python -m http.server 8000` in `C:\Users\Martin\Projects\perfect-day-pong`, open `http://localhost:8000`.
-- **How to test**: `node tests/logic.test.js` (or `npm test`). All Step 2 unit tests pass; headless Chrome DOM check passed.
+- **Status / Step**: Step 7 complete (Steps 4-7 built, audited in `AUDIT.md`, verified, ready for final `main` publish).
+- **Live URL**: `https://martindavies-code.github.io/perfect-day-pong/`
+- **How to run / test**: `python -m http.server 8000` -> `http://localhost:8000`. Unit tests: `node tests/logic.test.js`. Audio test: `tests/audio-test.html`.
 - **What works**:
-  - 9-match run across Act I (5-artist pool), Act II (7-artist pool + Bono mini-boss), Act III (Elton, Bowie, Lou Reed).
-  - Opponent quirks/formations (Choir, Quartet, Boyzone, Piano, Bowie gravity shift, Bono shades+decoy, Lou 3 phases + Borrowed Time).
-  - Lives (3 start, max 5), 8 pickup types (at least 2 Extra Life offers guaranteed), Fee Points + 6 permanent upgrades in `localStorage`.
-- **Placeholders**: Full BBC interstitial cards & Act ident stingers (Step 4), Export/Import UI & Google Cloud Save (Step 5), richer audio/juice (Step 6).
-- **Known bugs / limitations**: Live audio & gamepad require interactive browser; cloud save not yet wired.
+  - True 3D `(x,y,z)` physics, swept bat collision, spin, 5 depth cues, mouse (pointer lock + fallback)/gamepad/keyboard, finite AI (`>=110ms`).
+  - 9-match run across 3 Acts, 16 opponents (Choir/Quartet/Boyzone/Piano/Bowie/Bono/Lou 3 phases + Borrowed Time), 8 pickups, 6 upgrades, Fee Points.
+  - Factory look, 24 tagged BBC interstitial cards, Charter review bars, layered Detroit house + 3D HRTF/Stereo spatial audio.
+  - `localStorage` save, Export/Import (256 KB cap, strict validation, backups), 2-click Reset, Google Drive `appDataFolder` + conflict UI.
+- **Manual headphone check for Martin**: ball clearly approaches; passes left/right; far wall sounds far; music never masks ball; mute (`M`) & volume sliders work.
+- **Known issues**:
+  - Cloud save read-before-write is not atomic across two simultaneous devices (v1 assumes one active session; revision check + backups mitigate).
+  - Google OAuth Web Client ID is unset (`config.js`); live sign-in is built, untested until Martin completes `SETUP_GOOGLE.md`.
+  - Physical gamepad & live interactive audio only verified via code/OfflineAudioContext (not physical controller hardware).
 - **Next 3 steps**:
-  1. Step 3: Merge `dev` to `main`, create GitHub repo `perfect-day-pong`, enable GitHub Pages from `main`, verify live URL.
-  2. Step 4: Factory Records catalogue polish, 20+ BBC interstitial cards, title/act continuity idents.
-  3. Step 5-7: Export/Import save + Google OAuth Drive `appDataFolder` cloud save, audio polish + `tests/audio-test.html`, adversarial QA (`AUDIT.md`).
-- **Decisions**: Kept `storage.js` separate from pure `logic.js`; all upgrade/save validation unit-tested in Node.
+  1. Complete `SETUP_GOOGLE.md` and paste `GOOGLE_CLIENT_ID` into `config.js`.
+  2. Run manual headphone & Bluetooth controller check on `https://martindavies-code.github.io/perfect-day-pong/`.
+  3. Tune opponent speeds/feel after first full live playthrough.
+- **Decisions**: Vanilla ES modules + Canvas 2D 3D projection + Web Audio; zero build step; relative paths throughout.

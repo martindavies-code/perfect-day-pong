@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Perfect Day Pong — OfflineAudioContext Spatial Verification</title>
+  <style>
+    body { font-family: monospace; background: #111214; color: #f4f2eb; padding: 24px; }
+    .pass { color: #7ae582; }
+    .fail { color: #e0533c; }
+  </style>
+</head>
+<body>
+  <h1>Perfect Day Pong — Audio Verification (OfflineAudioContext)</h1>
+  <pre id="results">Running...</pre>
+  <script type="module">
+    import { ROOM, gameToAudioCoords, computeDopplerRate } from '../logic.js';
+
+    const out = document.getElementById('results');
+    const lines = [];
+    let allPassed = true;
+
+    function assert(cond, label) {
+      if (!cond) allPassed = false;
+      lines.push(`${cond ? 'PASS' : 'FAIL'}: ${label}`);
+    }
+
+    async function renderImpact({ x, y, z }) {
+      const sr = 44100;
+      const oac = new OfflineAudioContext(2, Math.floor(sr * 0.25), sr);
+      const L = oac.listener;
+      const lac = gameToAudioCoords(0, 0, ROOM.cameraZ);
+      L.positionX.value = lac.x;
+      L.positionY.value = lac.y;
+      L.positionZ.value = lac.z;
+      L.forwardX.value = 0; L.forwardY.value = 0; L.forwardZ.value = -1;
+      L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0;
+
+      const p = oac.createPanner();
+      p.panningModel = 'HRTF';
+      p.distanceModel = 'inverse';
+      p.refDistance = 2.6;
+      p.maxDistance = 28;
+      p.rolloffFactor = 1.15;
+      const ac = gameToAudioCoords(x, y, z);
+      p.positionX.value = ac.x;
+      p.positionY.value = ac.y;
+      p.positionZ.value = ac.z;
+
+      const osc = oac.createOscillator();
+      const g = oac.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = 440;
+      g.gain.setValueAtTime(0.35, 0);
+      g.gain.exponentialRampToValueAtTime(0.001, 0.2);
+
+      osc.connect(g);
+      g.connect(p);
+      p.connect(oac.destination);
+      osc.start(0);
+      osc.stop(0.21);
+
+      const buf = await oac.startRendering();
+      const ch0 = buf.getChannelData(0);
+      const ch1 = buf.getChannelData(1);
+      let l2 = 0, r2 = 0;
+      for (let i = 0; i < ch0.length; i++) {
+        l2 += ch0[i] * ch0[i];
+        r2 += ch1[i] * ch1[i];
+      }
+      return {
+        leftRms: Math.sqrt(l2 / ch0.length),
+        rightRms: Math.sqrt(r2 / ch1.length),
+        totalRms: Math.sqrt((l2 + r2) / (ch0.length * 2)),
+      };
+    }
+
+    async function renderMaxPolyphonyPeak() {
+      const sr = 44100;
+      const oac = new OfflineAudioContext(2, Math.floor(sr * 0.3), sr);
+      const limiter = oac.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.002;
+      const master = oac.createGain();
+      master.gain.value = 0.8;
+      master.connect(limiter);
+      limiter.connect(oac.destination);
+
+      for (let i = 0; i < 24; i++) {
+        const osc = oac.createOscillator();
+        const g = oac.createGain();
+        osc.frequency.value = 220 + i * 25;
+        g.gain.setValueAtTime(0.25, 0);
+        g.gain.exponentialRampToValueAtTime(0.001, 0.25);
+        osc.connect(g);
+        g.connect(master);
+        osc.start(0);
+        osc.stop(0.26);
+      }
+      const buf = await oac.startRendering();
+      let peak = 0;
+      for (let c = 0; c < 2; c++) {
+        const d = buf.getChannelData(c);
+        for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+      }
+      return peak;
+    }
+
+    async function renderBallPass() {
+      const sr = 44100;
+      const dur = 1.0;
+      const oac = new OfflineAudioContext(2, Math.floor(sr * dur), sr);
+      const osc = oac.createOscillator();
+      const filt = oac.createBiquadFilter();
+      const g = oac.createGain();
+      osc.type = 'triangle';
+      const dop = computeDopplerRate({ x: 0, y: 0, z: 4 }, { x: 0, y: 0, z: -15 });
+      osc.frequency.setValueAtTime(220, 0);
+      osc.frequency.linearRampToValueAtTime(220 * dop, dur);
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(520, 0);
+      filt.frequency.linearRampToValueAtTime(3100, dur);
+      g.gain.setValueAtTime(0.032, 0);
+      g.gain.linearRampToValueAtTime(0.087, dur);
+
+      osc.connect(filt);
+      filt.connect(g);
+      g.connect(oac.destination);
+      osc.start(0);
+      osc.stop(dur);
+
+      const buf = await oac.startRendering();
+      const ch = buf.getChannelData(0);
+      const rmsEarly = Math.sqrt(ch.slice(0, sr * 0.2).reduce((a, v) => a + v * v, 0) / (sr * 0.2));
+      const rmsLate = Math.sqrt(ch.slice(sr * 0.8).reduce((a, v) => a + v * v, 0) / (sr * 0.2));
+      return { rmsEarly, rmsLate };
+    }
+
+    const leftNear = await renderImpact({ x: -3.2, y: 0, z: 1 });
+    const rightNear = await renderImpact({ x: 3.2, y: 0, z: 1 });
+    const leftFar = await renderImpact({ x: -3.2, y: 0, z: 15.5 });
+    const rightFar = await renderImpact({ x: 3.2, y: 0, z: 15.5 });
+    const peak24 = await renderMaxPolyphonyPeak();
+    const pass = await renderBallPass();
+
+    assert(leftNear.leftRms > leftNear.rightRms * 1.15, `Left-near louder on Left (${leftNear.leftRms.toFixed(4)} > ${leftNear.rightRms.toFixed(4)})`);
+    assert(rightNear.rightRms > rightNear.leftRms * 1.15, `Right-near louder on Right (${rightNear.rightRms.toFixed(4)} > ${rightNear.leftRms.toFixed(4)})`);
+    assert(leftFar.leftRms > leftFar.rightRms, `Left-far louder on Left (${leftFar.leftRms.toFixed(4)} > ${leftFar.rightRms.toFixed(4)})`);
+    assert(rightFar.rightRms > rightFar.leftRms, `Right-far louder on Right (${rightFar.rightRms.toFixed(4)} > ${rightFar.leftRms.toFixed(4)})`);
+    assert(leftFar.totalRms < leftNear.totalRms * 0.65, `Far quieter than near (${leftFar.totalRms.toFixed(4)} < ${leftNear.totalRms.toFixed(4)})`);
+    assert(peak24 < 1.0, `Max polyphony (24 voices) peak below 0 dBFS: ${peak24.toFixed(4)}`);
+    assert(pass.rmsLate > pass.rmsEarly * 1.8, `Approaching ball rises in level (${pass.rmsEarly.toFixed(4)} -> ${pass.rmsLate.toFixed(4)})`);
+
+    out.textContent = lines.join('\n') + `\n\nOVERALL: ${allPassed ? 'ALL PASSED' : 'FAILED'}`;
+    out.dataset.passed = String(allPassed);
+  </script>
+</body>
+</html>
