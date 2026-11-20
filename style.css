@@ -498,3 +498,6 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
 /* Auto cross-axis margins centre short cards, but never clip a tall route. */
 #screen-overlay { align-items: flex-start; }
 #screen-overlay > .card { margin-block: auto; flex-shrink: 0; }
+
+.card-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--accent-2); }
+.persona { color: var(--ink); }
