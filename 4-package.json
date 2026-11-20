@@ -1,0 +1,9 @@
+{
+  "name": "perfect-day-pong",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/logic.test.js && node tests/winpath.sim.mjs"
+  }
+}
