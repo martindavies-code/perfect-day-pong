@@ -501,3 +501,241 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
 
 .card-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--accent-2); }
 .persona { color: var(--ink); }
+
+/* ===== Larger visual redesign (20 Nov): Factory sleeve craft over BBC continuity =====
+   Palette, fonts and room rendering unchanged; this pass works on hierarchy, spacing
+   and transmission motifs. Base rules below intentionally sit after the earlier
+   narrow media blocks, so matching narrow overrides are repeated at the end. */
+
+/* Transmission backdrop: soft studio glow + faint CRT scanlines behind every card. */
+#screen-overlay {
+  background:
+    radial-gradient(130% 100% at 50% -10%, rgba(40, 44, 54, 0.94), rgba(13, 14, 16, 0.97) 72%);
+}
+#screen-overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(244, 242, 235, 0.022) 0,
+    rgba(244, 242, 235, 0.022) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+#screen-overlay > .card {
+  position: relative;
+  z-index: 1;
+}
+
+/* Catalogue badge: filled Factory-style box. */
+.fac-cat {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #111214;
+  padding: 3px 8px;
+  letter-spacing: 0.1em;
+}
+
+/* Card shell: more air, harder shadow. */
+.card {
+  width: min(820px, 100%);
+  padding: 24px 30px 24px;
+  box-shadow: 14px 14px 0 rgba(0, 0, 0, 0.5);
+}
+.card::before {
+  height: 6px;
+  margin: -24px -30px 16px -30px;
+}
+.card h1 {
+  letter-spacing: 0.08em;
+}
+.card h2 {
+  letter-spacing: 0.06em;
+}
+
+/* Title sleeve: kicker row, oversized wordmark, transmission clock. */
+.title-card {
+  width: min(880px, 100%);
+}
+.title-card::before {
+  background: linear-gradient(
+    90deg,
+    #8a8a86 0 14%,
+    #b7a400 14% 28%,
+    #00a3a3 28% 42%,
+    #00923f 42% 56%,
+    #a3007b 56% 70%,
+    #c01c1c 70% 84%,
+    #1c3fa0 84% 100%
+  );
+}
+.title-sleeve {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 28px;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 14px;
+  margin-bottom: 12px;
+}
+.sleeve-main {
+  min-width: 0;
+}
+.sleeve-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.sleeve-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+.title-sleeve h1 {
+  font-size: clamp(30px, 4.6vw, 46px);
+  letter-spacing: 0.1em;
+  line-height: 1.04;
+  margin: 10px 0 8px;
+}
+.title-standfirst {
+  color: var(--ink) !important;
+  font-size: 15px !important;
+  line-height: 1.45;
+  margin: 0 !important;
+}
+.tx-clock {
+  flex: 0 0 auto;
+  width: 92px;
+  height: 92px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Stat strip: ruled cells, stronger numbers. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0;
+  padding: 0;
+}
+.stat-strip span {
+  padding: 6px 12px;
+  border-right: 1px solid var(--rule);
+}
+.stat-strip span:last-child {
+  border-right: none;
+}
+
+/* Continuity card: quote bar + labelled chip. */
+.interstitial-box {
+  border-left: 3px solid var(--accent-2);
+  padding: 9px 14px;
+  line-height: 1.5;
+}
+.card-tag {
+  display: inline-block;
+  border: 1px solid var(--accent-2);
+  padding: 1px 6px;
+  margin-bottom: 5px;
+  letter-spacing: 0.1em;
+}
+
+/* Choice cards: spine accent that lights on hover/focus. */
+.choice-card {
+  border-left: 3px solid var(--rule);
+  transition: border-color 0.12s, transform 0.12s;
+}
+.choice-card:hover,
+.choice-card:focus-visible {
+  border-left-color: var(--accent);
+  transform: translateY(-2px);
+}
+.choice-title {
+  font-size: 16px;
+}
+.choice-cta {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--accent-2);
+}
+
+/* var() is invalid inside SVG presentation attributes, so the clock's accent
+   parts are coloured from here. */
+.tx-clock .tx-accent-stroke {
+  stroke: var(--accent);
+}
+.tx-clock .tx-accent-fill {
+  fill: var(--accent);
+}
+
+/* Route: listings-page treatment. */
+.route-acts h3 {
+  letter-spacing: 0.14em;
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 5px;
+}
+.route-node {
+  border-left: 3px solid var(--rule);
+}
+.route-node.current {
+  border-left-color: var(--accent-2);
+  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Buttons: firmer primary action. */
+button.primary {
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.4);
+}
+button.primary:hover,
+button.primary:focus-visible {
+  border-color: var(--ink);
+}
+
+/* Narrow overrides for the rules above (kept after them so they win). */
+@media (max-width: 720px) {
+  .card {
+    padding: 16px 18px;
+  }
+  .card::before {
+    height: 5px;
+    margin: -16px -18px 14px -18px;
+  }
+  .title-sleeve {
+    gap: 14px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+  }
+  .title-sleeve h1 {
+    font-size: 28px;
+  }
+  .tx-clock {
+    width: 64px;
+    height: 64px;
+  }
+  .stat-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .stat-strip span:nth-child(2n) {
+    border-right: none;
+  }
+  .stat-strip span {
+    border-bottom: 1px solid var(--rule);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .choice-card {
+    transition: none;
+  }
+  .choice-card:hover,
+  .choice-card:focus-visible {
+    transform: none;
+  }
+}
