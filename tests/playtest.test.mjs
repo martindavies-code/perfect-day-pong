@@ -14,6 +14,7 @@ assert.equal(pad.vx, 0, 'Stationary target does not keep adding spin');
 applyMouseSample(pad, { targetNormX: 10, targetNormY: -10 }, 0);
 assert.equal(pad.x + pad.width / 2, ROOM.halfW);
 assert.ok(Number.isFinite(pad.vx));
+assert.ok(Math.hypot(pad.vx, pad.vy) <= 24.000001, 'Cursor warp does not create an excessive spin impulse');
 for (const hz of [30, 60, 120, 144]) {
   const p = createPaddle();
   applyMouseSample(p, { targetNormX: .3 / hz, targetNormY: 0 }, 1 / hz);
@@ -71,13 +72,27 @@ assert.equal(validateAndSanitizeSave(save).save.settings.announcerEnabled, false
 // High-rate input must use cached bounds, not force a layout read per event.
 const oldWindow = globalThis.window, oldDocument = globalThis.document;
 const w = new EventTarget(), d = new EventTarget(), c = new EventTarget(); let reads = 0;
-c.getBoundingClientRect = () => { reads++; return { left: 0, top: 0, width: 1000, height: 600 }; };
+let bounds = { left: 0, top: 0, width: 1000, height: 600 };
+const oldGetGamepads = navigator.getGamepads;
+const gamepad = { index: 0, connected: true, axes: [.8, 0], buttons: Array.from({length:16}, () => ({pressed:false})), id: 'test-pad' };
+navigator.getGamepads = () => [gamepad];
+c.getBoundingClientRect = () => { reads++; return bounds; };
 globalThis.window = w; globalThis.document = d;
 try {
   const input = createInputManager(c, () => ({ mouseSensitivity: 1 }));
+  assert.equal(input.update(1 / 60).method, 'gamepad');
   for (let i = 0; i < 100; i++) { const e = new Event('mousemove'); Object.assign(e, { clientX: 500 + i, clientY: 300, movementX: 1, movementY: 0 }); c.dispatchEvent(e); }
   assert.equal(reads, 1); assert.equal(input.update(1 / 60).mode, 'absolute');
+  assert.equal(input.update(1 / 60).method, 'mouse', 'A held gamepad stick cannot steal mouse control');
+  gamepad.axes[0] = -.8;
+  assert.equal(input.update(1 / 60).method, 'gamepad', 'A fresh stick movement deliberately switches back');
+  bounds = { left: 100, top: 50, width: 500, height: 300 };
   w.dispatchEvent(new Event('resize')); assert.equal(reads, 2);
+  const centred = new Event('mousemove'); Object.assign(centred, { clientX: 350, clientY: 200, movementX: 0, movementY: 0 }); c.dispatchEvent(centred);
+  assert.equal(input.update(1 / 60).targetNormX, 0, 'Resized canvas uses new CSS bounds');
+  bounds = { ...bounds, left: 150 };
+  w.dispatchEvent(new Event('scroll')); assert.equal(reads, 3);
+  c.dispatchEvent(centred); assert.ok(input.update(1 / 60).targetNormX < 0, 'Scroll refreshes the cached canvas origin');
   input.destroy();
-} finally { globalThis.window = oldWindow; globalThis.document = oldDocument; }
+} finally { globalThis.window = oldWindow; globalThis.document = oldDocument; navigator.getGamepads = oldGetGamepads; }
 console.log('Playtest controls, spin guide, scoring, route, local-only voice and input-layout regressions passed.');
