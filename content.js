@@ -29,6 +29,21 @@ export const INTERSTITIAL_CARDS = [
   { tag: 'ORIGINAL', text: 'Bono is appearing slightly more frequently than statistical fairness would suggest.' },
   { tag: 'ORIGINAL', text: 'Viewers in Scotland and Wales may experience identical wireframe geometry.' },
   { tag: 'ORIGINAL', text: 'Licence fee payers who reach Act III are entitled to a warm amber glow.' },
+
+  // John Birt cards. SOURCED cards restate what the Wikipedia article on John Birt, Baron Birt says,
+  // with quotation marks only around wording that article quotes. SATIRE cards are invented
+  // jokes about his management style; they are not quotes and are labelled as such on screen.
+  { tag: 'SOURCED', source: 'Wikipedia: John Birt, Baron Birt', text: 'As Director-General he said he wanted the BBC to be "the best managed public sector organisation".' },
+  { tag: 'SOURCED', source: 'Wikipedia: John Birt, Baron Birt', text: 'Producer Choice, April 1993: programme makers could buy from BBC departments or from outside. Some found records cheaper in local shops than from BBC resources.' },
+  { tag: 'SOURCED', source: 'Wikipedia: John Birt, Baron Birt', text: 'With Peter Jay, he argued television news had a "bias against understanding" and called for "a mission to explain".' },
+  { tag: 'SOURCED', source: 'Wikipedia: John Birt, Baron Birt', text: 'Dennis Potter called him a "croak-voiced Dalek" in the 1993 MacTaggart Lecture. His management jargon became known as "Birtspeak".' },
+  { tag: 'SOURCED', source: 'Wikipedia: John Birt, Baron Birt', text: 'On BBC drama he conceded: "The originality is not there as it was in the Sixties."' },
+  { tag: 'SATIRE, INVENTED', text: 'Every rally will be internally invoiced. Spin may be sourced from a BBC department or externally.' },
+  { tag: 'SATIRE, INVENTED', text: 'Objectives have been set for the ball. The ball will be reviewed against them.' },
+  { tag: 'SATIRE, INVENTED', text: 'The bat is under-utilised between 02:00 and 02:15. A resources review will explain why.' },
+  { tag: 'SATIRE, INVENTED', text: 'This bounce has been outsourced to a consultant, who will explain it at length.' },
+  { tag: 'SATIRE, INVENTED', text: 'Deuce is now a performance-management event. Both parties will receive a framework.' },
+  { tag: 'SATIRE, INVENTED', text: 'A mission to explain this point will follow, once the point has been unified with the centre line.' },
 ];
 
 export function pickInterstitialCard(rng, indexOffset = 0) {
