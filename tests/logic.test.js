@@ -358,3 +358,14 @@ function playSequence(seq, opts = {}) {
 }
 
 console.log('All Step 2 logic, physics, AI, run, upgrades & save tests passed.');
+
+
+// First-device safety: no baseline must never overwrite either copy.
+for (const localSave of [createDefaultSave('fresh'), {...createDefaultSave('used'), revision: 9, totalEarned: 300}]) {
+  for (const meta of [{}, {lastSyncedRevision: null, lastSyncedRemoteVersion: null}, {lastSyncedRevision: 0}]) {
+    assert.equal(detectCloudConflict({localSave, remoteSave: createDefaultSave('cloud'), remoteVersion: 'remote-v1', ...meta}).status, 'conflict');
+  }
+}
+assert.equal(detectCloudConflict({localSave: createDefaultSave(), remoteSave: null}).status, 'no_remote');
+assert.equal(detectCloudConflict({localSave: {revision: 2}, remoteSave: {revision: 3}, lastSyncedRevision: 2, lastSyncedRemoteVersion: 'v2', remoteVersion: 'v3'}).status, 'pull_remote');
+console.log('Fresh-device and missing-baseline safety regressions passed.');
