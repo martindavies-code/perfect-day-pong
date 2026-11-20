@@ -372,3 +372,22 @@ for (const localSave of [createDefaultSave('fresh'), {...createDefaultSave('used
 assert.equal(detectCloudConflict({localSave: createDefaultSave(), remoteSave: null}).status, 'no_remote');
 assert.equal(detectCloudConflict({localSave: {revision: 2}, remoteSave: {revision: 3}, lastSyncedRevision: 2, lastSyncedRemoteVersion: 'v2', remoteVersion: 'v3'}).status, 'pull_remote');
 console.log('Fresh-device and missing-baseline safety regressions passed.');
+
+// Difficulty modes: Lou Reed labels, easy is gentler, unknown ids fall back to regular
+{
+  const { DIFFICULTY_MODES, getDifficultyMode, DEFAULT_DIFFICULTY } = await import('../logic.js');
+  const easy = getDifficultyMode('take_a_walk');
+  const regular = getDifficultyMode(DEFAULT_DIFFICULTY);
+  assert.equal(easy.label, 'TAKE A WALK');
+  assert.equal(easy.plain, 'EASY');
+  assert.equal(regular.label, 'WAITING FOR THE MAN');
+  assert.equal(regular.plain, 'REGULAR');
+  assert.ok(easy.rampEveryHits > regular.rampEveryHits, 'Easy ramps slower');
+  assert.ok(easy.maxTempoIndex < regular.maxTempoIndex, 'Easy caps lower');
+  assert.ok(easy.startTempoIndex(1) < regular.startTempoIndex(1), 'Easy starts lower');
+  assert.equal(getDifficultyMode('nonsense').id, DEFAULT_DIFFICULTY, 'Unknown difficulty falls back to regular');
+  const save = createDefaultSave('dev-modes');
+  assert.equal(save.settings.difficulty, DEFAULT_DIFFICULTY, 'Default save is Regular');
+  const migrated = validateAndSanitizeSave({ ...save, settings: { ...save.settings, difficulty: 'deleted_mode' } });
+  assert.equal(migrated.save.settings.difficulty, DEFAULT_DIFFICULTY, 'Stale difficulty id migrates to Regular');
+}
