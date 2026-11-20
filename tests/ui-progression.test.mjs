@@ -245,11 +245,16 @@ try {
   await evalJs(cdp, 'document.getElementById("btn-decide-later").click()');
   await new Promise((r) => setTimeout(r, 150));
 
+  assert.ok((await evalJs(cdp, 'document.querySelector(".persona")?.textContent || ""')).includes('John Birt'), 'Title names the playable character');
+  assert.ok((await evalJs(cdp, 'document.getElementById("srv-player")?.parentElement.textContent')).includes('BIRT'), 'HUD labels the player as Birt');
+  await maybeShot(cdp, 'title-birt.png');
   // 5. Run start -> pick opponent -> reload -> Continue Run persists
   await evalJs(cdp, 'document.getElementById("btn-new-run").click()');
   await new Promise((r) => setTimeout(r, 200));
   assert.equal(await evalJs(cdp, 'document.querySelectorAll(".route-node").length'), 9, 'Nine real route stages shown before play');
   assert.ok(await evalJs(cdp, 'document.querySelector(".card").getBoundingClientRect().top >= document.getElementById("screen-overlay").getBoundingClientRect().top'), 'Tall route header must remain reachable');
+  assert.equal(await evalJs(cdp, 'document.querySelectorAll(".choice-card.pad-focus").length'), 0, 'No opponent looks pre-selected before the player chooses');
+  assert.ok(await evalJs(cdp, 'document.querySelector(".interstitial-box .card-tag")?.textContent.length > 0'), 'Card source/satire label is shown');
   await maybeShot(cdp, 'playtest-route-desktop.png');
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 480, height: 700, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evalJs(cdp, 'document.documentElement.scrollWidth > document.documentElement.clientWidth'), false);
