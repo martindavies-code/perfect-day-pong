@@ -835,3 +835,23 @@ button.primary:focus-visible {
 .mode-card:not(.sel):hover {
   border-color: var(--ink);
 }
+
+/* ON FIRE badge: static high-contrast block, readable in peripheral vision.
+   No animation or flashing - motion stays on the ball itself. */
+.onfire-badge[hidden] {
+  display: none;
+}
+.onfire-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #e0533c;
+  color: #fff7ed;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  border: 1px solid #ffb25e;
+}
+
+/* Keep the SPEED label on one line at very narrow widths. */
+.speed-row > span:first-child { white-space: nowrap; }

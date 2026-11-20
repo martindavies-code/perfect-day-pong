@@ -309,6 +309,129 @@ export function checkPaddleHit(paddle, hitX, hitY, ballRadius, hitBoxes = null) 
   return { hit: false, box: null, normX: 0, normY: 0 };
 }
 
+// ============================================================================
+// 4b. TIMED STRIKES & ON FIRE (Martin, 2026-11-20)
+// Optional timing layer on top of normal returns. Position-only returns are
+// completely unaffected. A click within +/-TIMED_STRIKE_WINDOW of the ball
+// crossing the player plane counts as a timed strike: the return gets a
+// bounded speed boost. Clicks before contact boost the ball; clicks just
+// after contact still count toward the streak (the ball is already gone).
+// A click with no contact inside the window is a mistimed click: it drops
+// the streak and the fire, never the return itself. A plain no-click return
+// neither builds nor breaks the streak. Three consecutive timed strikes
+// light ON FIRE: a bounded burst (ON_FIRE_DURATION seconds, ended early by a
+// mistimed click or the point ending) with a stronger but still clamped
+// boost and a flaming ball. Timing is relative to the ball, not the music.
+// ============================================================================
+export const TIMED_STRIKE_WINDOW = 0.14;
+export const TIMED_STRIKE_BOOST = 1.18;
+export const ON_FIRE_STREAK = 3;
+export const ON_FIRE_DURATION = 5.0;
+export const ON_FIRE_BOOST = 1.25;
+
+export function createTimedStrikeState() {
+  return {
+    streak: 0,
+    lastClickAt: null,       // elapsed time of an unresolved click
+    lastContactAt: null,     // elapsed time of the most recent player contact
+    lastContactResolved: true,
+    onFireUntil: 0,
+    timedHits: 0,
+    activations: 0,
+  };
+}
+
+// Click during a rally. If the ball just crossed the player bat within the
+// window and that contact has not been claimed yet, the click resolves it as
+// timed immediately (late click). Otherwise it is parked for the next contact.
+export function timedStrikeClick(ts, elapsed) {
+  if (
+    ts.lastContactAt !== null &&
+    !ts.lastContactResolved &&
+    elapsed - ts.lastContactAt <= TIMED_STRIKE_WINDOW
+  ) {
+    ts.lastContactResolved = true;
+    return applyTimedStrike(ts, elapsed);
+  }
+  ts.lastClickAt = elapsed;
+  return { timed: false, mistimed: false, firedUp: false };
+}
+
+function applyTimedStrike(ts, elapsed) {
+  ts.streak += 1;
+  ts.timedHits += 1;
+  let firedUp = false;
+  if (ts.streak >= ON_FIRE_STREAK && elapsed >= ts.onFireUntil) {
+    ts.onFireUntil = elapsed + ON_FIRE_DURATION;
+    ts.activations += 1;
+    firedUp = true;
+  }
+  return { timed: true, mistimed: false, firedUp };
+}
+
+// Player bat contact. A parked click inside the window makes it timed and is
+// consumed; a parked click outside the window is a mistimed click. No click
+// at all leaves the streak untouched.
+export function timedStrikeContact(ts, elapsed) {
+  ts.lastContactAt = elapsed;
+  const clicked = ts.lastClickAt !== null && ts.lastClickAt !== undefined;
+  if (clicked) {
+    const within = Math.abs(elapsed - ts.lastClickAt) <= TIMED_STRIKE_WINDOW;
+    ts.lastClickAt = null;
+    if (within) {
+      ts.lastContactResolved = true;
+      return applyTimedStrike(ts, elapsed);
+    }
+    ts.streak = 0;
+    ts.onFireUntil = 0;
+    ts.lastContactResolved = true;
+    return { timed: false, mistimed: true, firedUp: false };
+  }
+  ts.lastContactResolved = false;
+  return { timed: false, mistimed: false, firedUp: false };
+}
+
+// Per-frame sweep: a parked click whose window has expired with no contact is
+// a mistimed click. Also ends ON FIRE when its time runs out (streak resets
+// so the burst must be re-earned).
+export function timedStrikeFrame(ts, elapsed) {
+  if (ts.lastClickAt !== null && elapsed - ts.lastClickAt > TIMED_STRIKE_WINDOW) {
+    ts.lastClickAt = null;
+    ts.streak = 0;
+    ts.onFireUntil = 0;
+    return { mistimed: true, fireEnded: false };
+  }
+  if (ts.onFireUntil > 0 && elapsed >= ts.onFireUntil) {
+    ts.onFireUntil = 0;
+    ts.streak = 0;
+    return { mistimed: false, fireEnded: true };
+  }
+  return { mistimed: false, fireEnded: false };
+}
+
+export function timedStrikeReset(ts) {
+  ts.streak = 0;
+  ts.lastClickAt = null;
+  ts.lastContactAt = null;
+  ts.lastContactResolved = true;
+  ts.onFireUntil = 0;
+}
+
+export function isOnFire(ts, elapsed) {
+  return ts.onFireUntil > 0 && elapsed < ts.onFireUntil;
+}
+
+// Return-speed multiplier for the current frame. Fire boost wins; a parked
+// in-window click gives the one-shot timed boost; otherwise normal physics.
+// The physics clamp (maxZSpeed) still bounds the result either way.
+export function timedStrikeBoost(ts, elapsed) {
+  if (isOnFire(ts, elapsed)) return ON_FIRE_BOOST;
+  if (ts.lastClickAt !== null && Math.abs(elapsed - ts.lastClickAt) <= TIMED_STRIKE_WINDOW) {
+    return TIMED_STRIKE_BOOST;
+  }
+  return 1.0;
+}
+
 export function stepBallPhysics(ball, playerPaddle, opponentPaddle, dt, options = {}) {
   const room = options.room || ROOM;
   const gravityY = options.gravityY ?? room.defaultGravityY;

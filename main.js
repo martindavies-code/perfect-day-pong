@@ -19,6 +19,13 @@ import {
   clampPaddle,
   createBall,
   stepBallPhysics,
+  createTimedStrikeState,
+  timedStrikeClick,
+  timedStrikeContact,
+  timedStrikeFrame,
+  timedStrikeReset,
+  isOnFire,
+  timedStrikeBoost,
   createAIState,
   stepAI,
   mulberry32,
@@ -65,6 +72,8 @@ const tempoHud = document.getElementById('tempo-hud');
 const announcerHud = document.getElementById('announcer-hud');
 const statusHud = document.getElementById('status-hud');
 const speedGaugeEl = document.getElementById('speed-gauge');
+const onFireHud = document.getElementById('onfire-hud');
+let onFireShown = null;
 let speedGaugeLastSegs = -1;
 // Broadcast-style speed meter: 7 segments, brightness rises with fill so it
 // reads in peripheral vision without text. Updated only when the segment
@@ -86,6 +95,14 @@ function updateSpeedGauge(m) {
   }
   speedGaugeEl.style.setProperty('--gauge-fill', String(frac));
 }
+function updateOnFireHud(m) {
+  if (!onFireHud) return;
+  const show = !!(m && m.onFire);
+  if (show === onFireShown) return;
+  onFireShown = show;
+  onFireHud.hidden = !show;
+}
+
 const pickupsHud = document.getElementById('pickups-hud');
 const controlsHint = document.getElementById('controls-hint');
 const seedHud = document.getElementById('seed-hud');
@@ -303,6 +320,8 @@ function beginCurrentMatch() {
     ball: createBall({ x: 0, y: 0.25, z: 0.9, vx: 0, vy: 0, vz: 0 }),
     phase: 'awaiting_serve',
     phaseTimer: 0,
+    timed: createTimedStrikeState(),
+    onFire: false,
     serveAutoTimer: 1.0,
     serveReturnBoostLeft: (up.serveWindow || 0) > 0,
     mode,
@@ -477,6 +496,7 @@ function updateHud() {
     setHudText(tempoHud, `${tempo.label} // ${tempo.bpm} BPM`);
     setHudText(announcerHud, m.announcer);
     updateSpeedGauge(m);
+    updateOnFireHud(m);
   }
 
   const method = input.getLastInputMethod();
@@ -486,8 +506,8 @@ function updateHud() {
     setHudText(controlsHint, 'KEYS: WASD/ARROWS MOVE · SPACE: SERVE · ESC: PAUSE · M: MUTE');
   } else {
     setHudText(controlsHint, input.isPointerLocked()
-      ? 'MOUSE (LOCKED): MOVE BAT · CLICK: SERVE · ESC: PAUSE'
-      : 'MOUSE: MOVE BAT · CLICK: SERVE & LOCK · ESC: PAUSE');
+      ? 'MOUSE (LOCKED): MOVE BAT · CLICK: SERVE · CLICK AT CONTACT: TIMED STRIKE · ESC: PAUSE'
+      : 'MOUSE: MOVE BAT · CLICK: SERVE & LOCK · CLICK AT CONTACT: TIMED STRIKE · ESC: PAUSE');
   }
 }
 
@@ -617,7 +637,8 @@ function wireCloudButtons() {
 function renderMechanicsHtml() {
   return `<details class="mechanics-guide"><summary>Aiming, spin &amp; controls</summary>
     <div class="aim-grid"><div><strong>AIM AT CONTACT</strong><p>Hit the right / left edge of your bat to send the ball right / left. Top / bottom changes its vertical launch. The centre gives a straighter return; gravity still pulls down.</p></div>
-    <div><strong>SWIPE FOR CURVE</strong><p>Moving the bat as it hits adds sideways / vertical speed and spin. Spin bends the flight and fades over time. A still edge hit also adds a smaller counter-curve. Curve Master increases spin by 35% per stack.</p></div></div>
+    <div><strong>SWIPE FOR CURVE</strong><p>Moving the bat as it hits adds sideways / vertical speed and spin. Spin bends the flight and fades over time. A still edge hit also adds a smaller counter-curve. Curve Master increases spin by 35% per stack.</p></div>
+    <div><strong>TIMED STRIKES &amp; ON FIRE</strong><p>Optional: click as the ball meets your bat (about a tenth of a second either way) for a faster return. Three timed strikes in a row and you are ON FIRE - a flaming ball and hotter returns for five seconds. A click with no contact in the window is mistimed: it costs the streak and the fire, never the return. Returning without clicking is always fine and changes nothing. Timing follows the ball, not the music.</p></div></div>
     <p>Mouse follows your latest position without easing. Click to serve and lock the pointer; Esc pauses and releases it. WASD / arrows or a gamepad also work. The ball quickens on its own as the rally builds; the SPEED meter shows how fast it is travelling. Bat-speed upgrades affect keys / gamepad, not direct mouse tracking.</p>
     <p>Scores read YOU first, opponent second. Win four points with a two-point lead; Quick Deuce can add a deciding point. Voice is optional and never holds up a serve.</p></details>`;
 }
@@ -1272,6 +1293,15 @@ input.on('confirm', () => {
       releaseStickyBall(matchState);
     } else if (matchState.phase === 'awaiting_serve') {
       launchServe();
+    } else if (matchState.phase === 'rally') {
+      // Optional timed-strike click: judged against ball contact, never the
+      // music. A click with no contact inside the window is mistimed and
+      // costs the streak, never the return.
+      const res = timedStrikeClick(matchState.timed, matchState.elapsed);
+      if (res.timed) {
+        matchState.announcer = res.firedUp ? 'ON FIRE! The ball is actually on fire.' : 'Timed strike!';
+        if (res.firedUp) diagLog('match', 'on fire activated', `streak ${matchState.timed.streak}`);
+      }
     }
     if (input.getLastInputMethod() === 'mouse') {
       input.requestPointerLock();
@@ -1421,6 +1451,7 @@ function stepFixed(dt, inp) {
     const { events, scoredBy } = stepBallPhysics(m.ball, effPaddle, m.opponentPaddle, dt, {
       gravityY: m.gravityY,
       spinMultiplier: m.spinMultiplier,
+      speedMultiplier: timedStrikeBoost(m.timed, m.elapsed),
       maxZSpeed: 28 * tempo.speedScale,
       minZSpeed: 9.5 * tempo.speedScale,
       opponentBoxes: m.opponentBoxes,
@@ -1433,6 +1464,15 @@ function stepFixed(dt, inp) {
       if (ev.type === 'paddle') {
         m.rallyHits += 1;
         m.hueyShiftedThisFlight = false;
+        if (ev.side === 'player') {
+          const res = timedStrikeContact(m.timed, m.elapsed);
+          if (res.timed) {
+            m.announcer = res.firedUp ? 'ON FIRE! The ball is actually on fire.' : 'Timed strike!';
+            if (res.firedUp) diagLog('match', 'on fire activated', `streak ${m.timed.streak}`);
+          } else if (res.mistimed) {
+            m.announcer = 'Mistimed click. Streak lost; the return still counts.';
+          }
+        }
         if (ev.side === 'player' && m.stickyEnabled && m.rallyHits > 1) {
           m.stickyTimer = 0.28;
         }
@@ -1457,7 +1497,13 @@ function stepFixed(dt, inp) {
       }
     }
 
+    const sweep = timedStrikeFrame(m.timed, m.elapsed);
+    if (sweep.mistimed) m.announcer = 'Mistimed click. Streak lost; the return still counts.';
+    m.onFire = isOnFire(m.timed, m.elapsed);
+
     if (scoredBy) {
+      timedStrikeReset(m.timed);
+      m.onFire = false;
       if (scoredBy === 'opponent' && m.secondChanceLeft > 0) {
         m.secondChanceLeft -= 1;
         m.announcer = `Second Chance! Point replayed. ${getScoreCall(m.score, scoreCallNames(m))}`;
@@ -1493,6 +1539,10 @@ function stepFixed(dt, inp) {
   if (m.phase === 'rally') {
     m.ballTrail.push({ x: m.ball.x, y: m.ball.y, z: m.ball.z });
     if (m.ballTrail.length > 10) m.ballTrail.shift();
+    // ON FIRE: a couple of flame motes per frame; life decay keeps the count bounded.
+    if (m.onFire && m.particles.length < 220) {
+      spawnParticles(m.ball.x, m.ball.y, m.ball.z, m.rng() < 0.5 ? '#ff9a3c' : '#ffd23c', 2);
+    }
   }
   if (m.shake.mag > 0.001) {
     m.shake.x = (Math.random() - 0.5) * m.shake.mag;
