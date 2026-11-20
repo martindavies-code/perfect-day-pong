@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { applyMouseSample, getScoreCall, getSpokenScoreCall, getRunRoute } from '../playtest.js';
 import { createScoreAnnouncer } from '../announcer.js';
 import { createInputManager } from '../input.js';
-import { ROOM, createPaddle, createBall, stepBallPhysics, createRunState, pickOpponent, recordMatchResult, choosePickup, createMatchScore, scorePoint, createDefaultSave, validateAndSanitizeSave } from '../logic.js';
+import { ROOM, OPPONENTS, createPaddle, createBall, stepBallPhysics, createRunState, pickOpponent, recordMatchResult, choosePickup, createMatchScore, scorePoint, createDefaultSave, validateAndSanitizeSave } from '../logic.js';
 
 const pad = createPaddle();
 applyMouseSample(pad, { targetNormX: .5, targetNormY: -.5 }, 1 / 60);
@@ -60,6 +60,26 @@ assert.match(getSpokenScoreCall(score), /^Match point, opponent. Love. 40./, 'Ur
 score = scorePoint(score, 'opponent');
 assert.equal(getScoreCall(score), 'Match to opponent.');
 assert.match(getScoreCall({ ...createMatchScore({ quickDeuce: true }), playerPoints: 5, opponentPoints: 5, deuceCount: 3 }), /Deciding point/);
+
+// Advantage calls name the players (Birt and the opponent's call name), on
+// screen and in speech, while every other call keeps its generic wording.
+const names = { player: 'Birt', opponent: 'Dando' };
+const advP = { ...createMatchScore(), playerPoints: 4, opponentPoints: 3 };
+const advO = { ...createMatchScore(), playerPoints: 3, opponentPoints: 4 };
+assert.equal(getScoreCall(advP, names), 'Advantage, Birt. Match point, you.');
+assert.equal(getScoreCall(advO, names), 'Advantage, Dando. Match point, opponent.');
+assert.equal(getSpokenScoreCall(advP, names), 'Advantage, Birt. Match point, you.');
+assert.equal(getSpokenScoreCall(advO, names), 'Advantage, Dando. Match point, opponent.');
+assert.equal(getScoreCall(advP), 'Advantage, you. Match point, you.', 'No names falls back to generic wording');
+assert.equal(getScoreCall({ ...createMatchScore(), playerPoints: 3, opponentPoints: 3 }, names), 'Deuce.', 'Deuce stays unnamed');
+assert.equal(getSpokenScoreCall({ ...createMatchScore(), playerPoints: 1, opponentPoints: 0 }, names), '15. Love.', 'Point calls stay unnamed');
+assert.match(getScoreCall(advP, { player: 'Birt', opponent: 'Brodsky Quartet' }), /^Advantage, Birt\./);
+assert.match(getScoreCall(advO, { player: 'Birt', opponent: 'Brodsky Quartet' }), /^Advantage, Brodsky Quartet\./, 'Group call names work');
+// Every opponent has a call name for the announcer.
+for (const [id, opp] of Object.entries(OPPONENTS)) {
+  assert.ok(opp.callName && opp.callName.length > 0, `${id} has a callName`);
+  assert.ok(!/you|opponent/i.test(opp.callName), `${id} callName is a real name`);
+}
 
 const run = createRunState({ seed: 'ROUTE-1234' });
 for (let i = 0; i < 9; i++) {

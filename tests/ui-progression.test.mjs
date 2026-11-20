@@ -252,6 +252,34 @@ try {
   assert.ok((await evalJs(cdp, 'document.querySelector(".lead-you")?.textContent || ""')).includes('You are John Birt'), 'Title leads with You are John Birt');
   assert.ok(await evalJs(cdp, '(() => { const i = document.querySelector(".birt-portrait"); return !!i && i.complete && i.naturalWidth > 0; })()'), 'Birt pixel portrait is present and loaded');
   assert.ok((await evalJs(cdp, 'document.getElementById("srv-player")?.parentElement.textContent')).includes('BIRT'), 'HUD labels the player as Birt');
+  // Title clock is live: hands carry rotation transforms matching local time.
+  const clockProbe = await evalJs(cdp, `(() => {
+    const g = (sel) => {
+      const t = document.querySelector('.tx-clock ' + sel)?.getAttribute('transform') || '';
+      const m = t.match(/rotate\\(([0-9.]+)/);
+      return m ? parseFloat(m[1]) : null;
+    };
+    const now = new Date();
+    return { hour: g('.tx-hour-hand'), minute: g('.tx-minute-hand'), second: g('.tx-second-hand'), nowMinutes: now.getHours() * 60 + now.getMinutes(), nowSeconds: now.getSeconds() };
+  })()`);
+  assert.ok(clockProbe.hour !== null && clockProbe.minute !== null && clockProbe.second !== null, 'Clock hands have rotation transforms');
+  const expectedMinuteAngle = ((clockProbe.nowMinutes % 60) + clockProbe.nowSeconds / 60) * 6 % 360;
+  const minuteDrift = Math.min(Math.abs(clockProbe.minute - expectedMinuteAngle), 360 - Math.abs(clockProbe.minute - expectedMinuteAngle));
+  assert.ok(minuteDrift < 12, `Minute hand within 2 minutes of local time (drift ${minuteDrift.toFixed(1)}deg)`);
+  const secondDrift = Math.min(Math.abs(clockProbe.second - (clockProbe.nowSeconds * 6) % 360), 360 - Math.abs(clockProbe.second - (clockProbe.nowSeconds * 6) % 360));
+  assert.ok(secondDrift < 12, `Second hand near local time (drift ${secondDrift.toFixed(1)}deg)`);
+  await new Promise((r) => setTimeout(r, 1300));
+  const secondLater = await evalJs(cdp, `document.querySelector('.tx-clock .tx-second-hand')?.getAttribute('transform')`);
+  assert.notEqual(secondLater, `rotate(${clockProbe.second} 50 50)`, 'Second hand advances over time');
+  // Named advantage calls come from the real modules in this page.
+  const advCalls = await evalJs(cdp, `(async () => {
+    const pt = await import('./playtest.js');
+    const lg = await import('./logic.js');
+    const score = { ...lg.createMatchScore(), playerPoints: 3, opponentPoints: 4 };
+    return { screen: pt.getScoreCall(score, { player: 'Birt', opponent: lg.OPPONENTS.evan_dando.callName }), spoken: pt.getSpokenScoreCall(score, { player: 'Birt', opponent: lg.OPPONENTS.evan_dando.callName }) };
+  })()`);
+  assert.match(advCalls.screen, /^Advantage, Dando\./, 'On-screen advantage call names the opponent');
+  assert.match(advCalls.spoken, /^Advantage, Dando\./, 'Spoken advantage call names the opponent');
   await maybeShot(cdp, 'title-birt.png');
   // 5. Run start -> pick opponent -> reload -> Continue Run persists
   await evalJs(cdp, 'document.getElementById("btn-new-run").click()');
