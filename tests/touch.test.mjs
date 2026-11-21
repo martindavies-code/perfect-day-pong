@@ -199,6 +199,14 @@ try {
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 780, deviceScaleFactor: 2, mobile: true });
   await maybeShot(cdp, 'touch-portrait.png');
   assert.equal(await evalJs(cdp, 'document.documentElement.scrollWidth > document.documentElement.clientWidth'), false, 'No horizontal overflow in portrait');
+  for (const [w, h] of [[390, 780], [360, 740], [480, 700]]) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 2, mobile: true });
+    await new Promise((r) => setTimeout(r, 200));
+    const fit = await evalJs(cdp, '(() => { const g = document.getElementById("speed-gauge").getBoundingClientRect(); const b = document.getElementById("speed-gauge").closest(".score-block").getBoundingClientRect(); return { gaugeRight: g.right, blockRight: b.right, vw: document.documentElement.clientWidth }; })()');
+    assert.ok(fit.gaugeRight <= fit.blockRight - 4 && fit.blockRight <= fit.vw, `SPEED gauge stays inside its panel and the viewport at ${w}px: ${JSON.stringify(fit)}`);
+  }
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 780, deviceScaleFactor: 2, mobile: true });
+  await maybeShot(cdp, 'touch-portrait-fixed.png');
   console.log('Touch UI test passed (tap menus, drag without scroll, tap serve, multi-touch, landscape + portrait layout).');
 } finally {
   try { chrome.kill(); } catch {}
