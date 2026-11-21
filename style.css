@@ -957,3 +957,10 @@ html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent
   #hud-bottom { display: none; }
   #screen-overlay { padding: 8px; align-items: flex-start; }
 }
+
+/* Narrow: let the SPEED squares shrink so they stay inside the status panel. */
+@media (max-width: 720px) {
+  .speed-row { min-width: 0; }
+  .speed-gauge { margin-left: 6px; gap: 2px; min-width: 0; flex: 1 1 auto; justify-content: flex-end; }
+  .speed-gauge i { width: auto; flex: 1 1 0; min-width: 5px; max-width: 12px; }
+}
