@@ -720,7 +720,7 @@ function renderOverlay() {
             </div>
             <h1>Perfect Day Pong</h1>
             <p class="title-persona-lead"><span class="lead-you">You are John Birt</span></p>
-            <p class="title-standfirst">Nine matches across three Acts. True 3D tennis-scored Pong haunted by late-night continuity.</p>
+            <p class="title-standfirst">Nine matches. Three Acts. One Director-General. True 3D, tennis-scored Pong haunted by late-night continuity.</p>
           </div>
           <div class="sleeve-side">
             <img class="birt-portrait" src="${BIRT_PORTRAIT_SRC}" width="112" height="112" alt="Pixel-art portrait of John Birt, BBC Director-General, 1997" />
@@ -744,7 +744,7 @@ function renderOverlay() {
           <span>LOU REED BEATEN: ${saveDoc.stats.louReedWins}</span>
         </div>
         <div class="mode-row" role="group" aria-label="Difficulty">
-          ${Object.values(DIFFICULTY_MODES).map(d => `<button type="button" class="mode-card ${saveDoc.settings.difficulty === d.id ? 'sel' : ''}" data-mode="${d.id}" aria-pressed="${saveDoc.settings.difficulty === d.id}"><strong>${d.label}</strong><span>${d.plain}</span></button>`).join('')}
+          ${Object.values(DIFFICULTY_MODES).map(d => `<button type="button" class="mode-card ${saveDoc.settings.difficulty === d.id ? 'sel' : ''}" data-mode="${d.id}" aria-pressed="${saveDoc.settings.difficulty === d.id}"><strong>${d.label}</strong><span>${d.plain} · ${d.blurb}</span></button>`).join('')}
         </div>
         <div class="btn-row">
           <button class="primary" id="btn-new-run" type="button">Start New Run (Enter / A)</button>
@@ -875,10 +875,10 @@ function renderOverlay() {
           <span style="font-family:var(--mono);font-size:12px">MATCH ${runState.matchIndex + 1} / 9</span>
         </div>
         <div class="interstitial-box">${renderCardHtml(lastInterstitial)}</div>
+        <p class="pick-lead">Select the next artist on the running order.</p>
+        <div class="choice-grid">${choicesHtml}</div>
         ${renderRouteHtml()}
         ${renderMechanicsHtml()}
-        <p>Select the next artist on the running order.</p>
-        <div class="choice-grid">${choicesHtml}</div>
       </div>
     `;
     for (const btn of overlay.querySelectorAll('.btn-pick-opp')) {

@@ -11,6 +11,8 @@ export function createRenderer(canvas) {
   let dpr = 1;
 
   let vignetteCanvas = null;
+  let backdropCanvas = null;
+  let backdropKey = '';
 
   function resize() {
     const rect = canvas.getBoundingClientRect();
@@ -21,6 +23,67 @@ export function createRenderer(canvas) {
     canvas.height = Math.floor(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     vignetteCanvas = null;
+    backdropCanvas = null;
+  }
+
+  // Cached AGA-style copper-gradient sky, built once per resize + theme: deep
+  // indigo space overhead, a warm act-accent horizon band behind the room, dark
+  // plum floor surround, with faint static raster bars for the era's look.
+  // Pure backdrop: it sits outside the room and never touches ball or bats.
+  function drawBackdrop(accent, isWarmPhase) {
+    const key = `${width}x${height}:${accent}:${isWarmPhase ? 'w' : 'c'}`;
+    if (!backdropCanvas || backdropKey !== key) {
+      const bc = document.createElement('canvas');
+      bc.width = width;
+      bc.height = height;
+      const bctx = bc.getContext('2d');
+      const g = bctx.createLinearGradient(0, 0, 0, height);
+      if (isWarmPhase) {
+        g.addColorStop(0, '#241610');
+        g.addColorStop(0.42, '#3a2114');
+        g.addColorStop(0.58, '#6b3a1e');
+        g.addColorStop(0.75, '#2a1810');
+        g.addColorStop(1, '#140c08');
+      } else {
+        g.addColorStop(0, '#0d0a1c');
+        g.addColorStop(0.38, '#1b1230');
+        g.addColorStop(0.56, '#43284a');
+        g.addColorStop(0.62, '#55303e');
+        g.addColorStop(0.78, '#1a1024');
+        g.addColorStop(1, '#0b0714');
+      }
+      bctx.fillStyle = g;
+      bctx.fillRect(0, 0, width, height);
+      // Faint copper raster bars: static, evenly spaced, almost subliminal.
+      bctx.save();
+      bctx.globalAlpha = 0.05;
+      bctx.fillStyle = accent || '#e0533c';
+      const gap = Math.max(26, Math.floor(height / 18));
+      for (let y = gap; y < height; y += gap) {
+        bctx.fillRect(0, y, width, 1.5);
+      }
+      bctx.restore();
+      // Slow-breathing horizon glow around the act accent colour.
+      const glow = bctx.createRadialGradient(
+        width * 0.5, height * 0.58, 0,
+        width * 0.5, height * 0.58, Math.max(width, height) * 0.55
+      );
+      glow.addColorStop(0, hexA(accent || '#e0533c', isWarmPhase ? 0.22 : 0.16));
+      glow.addColorStop(0.5, hexA(accent || '#e0533c', isWarmPhase ? 0.08 : 0.05));
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      bctx.fillStyle = glow;
+      bctx.fillRect(0, 0, width, height);
+      backdropCanvas = bc;
+      backdropKey = key;
+    }
+    ctx.drawImage(backdropCanvas, 0, 0, width, height);
+  }
+
+  function hexA(hex, alpha) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return `rgba(224,83,60,${alpha})`;
+    const n = parseInt(m[1], 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
   }
 
   // Cached edge vignette: built once per resize, drawn under ball, bats and HUD.
@@ -85,9 +148,8 @@ export function createRenderer(canvas) {
     const sx = shake.x || 0;
     const sy = shake.y || 0;
 
-    // Background (matte near-black or Lou Reed Phase 3 warm tint)
-    ctx.fillStyle = isWarmPhase ? '#231a14' : theme.bg;
-    ctx.fillRect(0, 0, width, height);
+    // Backdrop: AGA copper-gradient sky (act-accent horizon), or warm Lou tint
+    drawBackdrop(theme.accent, isWarmPhase);
 
     const hw = ROOM.halfW;
     const hh = ROOM.halfH;
@@ -106,8 +168,9 @@ export function createRenderer(canvas) {
 
     // Floor plane shading
     const floorGrad = ctx.createLinearGradient(0, fl1.y, 0, fl0.y);
-    floorGrad.addColorStop(0, isWarmPhase ? '#2e2118' : '#14161a');
-    floorGrad.addColorStop(1, isWarmPhase ? '#3a2a1e' : '#1d2026');
+    floorGrad.addColorStop(0, isWarmPhase ? '#2e2118' : '#151824');
+    floorGrad.addColorStop(0.55, isWarmPhase ? '#352619' : '#1c2030');
+    floorGrad.addColorStop(1, isWarmPhase ? '#3a2a1e' : '#252a3c');
     ctx.fillStyle = floorGrad;
     ctx.beginPath();
     ctx.moveTo(fl0.x, fl0.y);
@@ -118,7 +181,7 @@ export function createRenderer(canvas) {
     ctx.fill();
 
     // Back wall plane
-    ctx.fillStyle = isWarmPhase ? '#261b13' : '#0f1013';
+    ctx.fillStyle = isWarmPhase ? '#261b13' : '#100e18';
     ctx.beginPath();
     ctx.moveTo(fl1.x, fl1.y);
     ctx.lineTo(fr1.x, fr1.y);
@@ -147,8 +210,8 @@ export function createRenderer(canvas) {
       ctx.closePath();
       ctx.fill();
     };
-    wallFill(fl0, fl1, tl1, tl0, 'rgba(60,90,140,0.10)');
-    wallFill(fr0, fr1, tr1, tr0, 'rgba(60,90,140,0.10)');
+    wallFill(fl0, fl1, tl1, tl0, 'rgba(96,74,150,0.10)');
+    wallFill(fr0, fr1, tr1, tr0, 'rgba(96,74,150,0.10)');
     wallFill(tl0, tl1, tr1, tr0, 'rgba(255,255,255,0.03)');
 
     // 1c. Wipeout-style floor: glowing track edges with chevron ticks and a

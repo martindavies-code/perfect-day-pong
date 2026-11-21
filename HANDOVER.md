@@ -1,5 +1,15 @@
 # HANDOVER.md - Perfect Day Pong
 
+## 21 November AGA-inspired art, copy and UX pass (Instinct, overnight)
+- Scope: art, copy and interface only. No gameplay, physics, AI, timing, scoring, difficulty maths, saves or music changes. BBC Birt / Lou Reed material, named calls and licence-fee jokes kept; SOURCED / SATIRE labelling untouched.
+- Reference: Amiga 1200 AGA-era style as art direction only (https://en.wikipedia.org/wiki/Amiga_Advanced_Graphics_Architecture). No hardware compatibility, palette-index constraints or emulation claimed or attempted.
+- Portraits (`portraits.js`, `birt-portrait.js`): all sixteen opponent portraits plus John Birt re-treated into one coherent style: flat colour clusters (median + palette quantize, no dithering), one shared indigo-to-plum gradient backdrop replacing each photo's background, 128x128 throughout, likenesses preserved. Burning Spear lifted for visibility; Lou Reed kept monochrome with stage-flare cleanup; Visual Ministry Choir's original drawn emblem kept, backdrop unified. Source photos unchanged outside the repo; treatment script runs locally (Pillow).
+- Court (`renderer.js`): the void around the room is now a cached AGA copper-gradient sky: deep indigo overhead, warm act-accent horizon band, faint static raster bars. Act accent tints the horizon glow (blue / gold / red by Act). Floor and side-wall planes enriched toward indigo; back wall kept dark so ball arrival stays clean. Ball and bats remain the highest-contrast elements; nothing added near the ball path. Lou Reed warm phase gets its own amber ramp.
+- Interface palette (`style.css`): greys shifted to indigo-tinted darks; HUD panels, cards and overlay backdrop share one family. Buttons gained hover / active / disabled states (transform and shadow, disabled dimmed), reduced-motion respected. Portrait frames gained the title portrait's hard shadow. Narrow screens: tightened topbar, mode cards, stat strip and note lines so Start New Run stays above the fold at 480x700 (covered by tests/ui-progression.test.mjs).
+- Copy and UX (`main.js`, `logic.js`): difficulty cards now explain themselves in one line each (data-only `blurb` field). Opponent select screen leads with the choice ("Select the next artist on the running order" plus cards) above the route details, so the next action is visible without scrolling. Title standfirst sharpened: "Nine matches. Three Acts. One Director-General."
+- Verification: `npm test` (13 suites) and `CHROME_PATH=... node tests/ui-progression.test.mjs` both pass. Before/after screenshots taken on desktop (1280x800) and narrow (480x800) across title, upgrades, settings, opponent select, gameplay and pause. Live site checked read-only after publish.
+- Not done: no new fonts (system stack retained), no animation additions, no gameplay-side art (opponent bat motifs unchanged). Parked local-only branches on other machines were not available; everything here builds on merged main.
+
 ## Current state and safe workflow
 - Live game: https://martindavies-code.github.io/perfect-day-pong/
 - Repository: https://github.com/martindavies-code/perfect-day-pong
