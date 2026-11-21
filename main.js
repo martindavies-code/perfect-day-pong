@@ -331,7 +331,6 @@ function beginCurrentMatch() {
       reactionDelayMs: oppDef.reactionDelayMs,
       maxSpeed: oppDef.maxSpeed,
       predictionError: oppDef.predictionError,
-      missChance: oppDef.missChance,
     }),
     ball: createBall({ x: 0, y: 0.25, z: 0.9, vx: 0, vy: 0, vz: 0 }),
     phase: 'awaiting_serve',

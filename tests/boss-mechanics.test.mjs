@@ -67,7 +67,6 @@ function playProductionSpecialMatch(oppId, seedStr) {
     reactionDelayMs: oppDef.reactionDelayMs,
     maxSpeed: oppDef.maxSpeed,
     predictionError: oppDef.predictionError,
-    missChance: oppDef.missChance,
   });
 
   let elapsed = 0;
@@ -187,7 +186,6 @@ for (const formationOpp of ['visual_ministry', 'brodsky_quartet', 'boyzone', 'el
     reactionDelayMs: oppDef.reactionDelayMs,
     maxSpeed: 6.9,
     predictionError: 0.48,
-    missChance: oppDef.missChance,
   });
   const pad = createPaddle({ x: 0, y: 0, width: oppDef.width, height: oppDef.height });
   const ballAway = createBall({ x: 0, y: 0, z: 8, vx: 0, vy: 0, vz: -12 });
