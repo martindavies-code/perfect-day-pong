@@ -5,6 +5,7 @@
 - Landscape (`style.css`): at orientation landscape and height up to 520 px the top bar is one compact row, the bottom hint pills are hidden and the score HUD is compact, so the court gets the room. `100dvh` app height, `overscroll-behavior: none`.
 - Fullscreen: a Fullscreen button appears only where `document.fullscreenEnabled` (Android Chrome, desktop). It requests fullscreen with navigationUI hide and tries a landscape orientation lock (ignored if refused). iPhone Safari has no page fullscreen, so no button there. `manifest.webmanifest` (display fullscreen, landscape) plus mobile meta tags let Add to Home Screen / Install open without browser bars. Browsers decide; a normal Chrome tab cannot be forced to hide its address bar.
 - Calls (`playtest.js`): match point, match result and the level-less score readout now use the opponent call name (e.g. "Match point, Dando.", "Match to Dando."), on screen and spoken. Player side still says "you". Tests in `tests/playtest.test.mjs`.
+- Narrow fix: SPEED gauge squares shrink inside the status panel at 720px and below (checked at 390, 360 and 480 wide by `tests/touch.test.mjs`).
 - Tests: `npm test` (13 suites), `node tests/ui-progression.test.mjs`, and new `npm run test:touch` (emulated touch in headless Chromium: tap through menus, drag without scroll, tap serves, second finger, 844x390 landscape and 390x780 portrait). Real phone hardware not tested.
 
 ## 21 November AGA-inspired art, copy and UX pass (Instinct, overnight)
