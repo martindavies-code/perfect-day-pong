@@ -1,10 +1,10 @@
 :root {
-  --bg: #111214;
-  --panel: #191b1f;
-  --panel-alt: #22252b;
+  --bg: #0d0a18;
+  --panel: #181324;
+  --panel-alt: #231c36;
   --ink: #f4f2eb;
-  --muted: #b6b4ab;
-  --rule: #343840;
+  --muted: #b3afc2;
+  --rule: #3a3452;
   --accent: #e0533c;
   --accent-2: #d4a84f;
   --font: "Helvetica Neue", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -99,7 +99,7 @@ html, body {
 }
 
 .score-block {
-  background: rgba(17, 18, 20, 0.86);
+  background: rgba(13, 10, 24, 0.84);
   border: 1px solid var(--rule);
   padding: 8px 12px;
   min-width: 150px;
@@ -123,7 +123,7 @@ html, body {
 
 .hud-center {
   text-align: center;
-  background: rgba(17, 18, 20, 0.86);
+  background: rgba(13, 10, 24, 0.84);
   border: 1px solid var(--rule);
   padding: 6px 14px;
 }
@@ -151,7 +151,7 @@ html, body {
 }
 
 .pill-bar {
-  background: rgba(17, 18, 20, 0.84);
+  background: rgba(13, 10, 24, 0.82);
   border: 1px solid var(--rule);
   padding: 5px 10px;
 }
@@ -159,7 +159,7 @@ html, body {
 #screen-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(17, 18, 20, 0.9);
+  background: rgba(13, 10, 24, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -196,7 +196,7 @@ html, body {
 
 .interstitial-box {
   border: 1px dashed var(--rule);
-  background: rgba(17, 18, 20, 0.72);
+  background: rgba(13, 10, 24, 0.72);
   padding: 10px 14px;
   margin: 12px 0;
   font-size: 13px;
@@ -284,6 +284,7 @@ button, .btn {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease, transform 0.06s ease, box-shadow 0.06s ease;
 }
 
 button:hover, button:focus-visible {
@@ -291,11 +292,26 @@ button:hover, button:focus-visible {
   outline: none;
 }
 
+button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #111214;
   font-weight: 700;
+}
+
+button.primary:hover, button.primary:focus-visible {
+  background: #ec6149;
+  border-color: var(--ink);
 }
 
 button.small {
@@ -353,7 +369,7 @@ button.small {
   padding: 2px 5px;
   border: 1px solid var(--accent-2);
   color: var(--accent-2);
-  background: rgba(17, 18, 20, 0.8);
+  background: rgba(13, 10, 24, 0.8);
 }
 
 .choice-grid {
@@ -510,7 +526,7 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
 /* Transmission backdrop: soft studio glow + faint CRT scanlines behind every card. */
 #screen-overlay {
   background:
-    radial-gradient(130% 100% at 50% -10%, rgba(40, 44, 54, 0.94), rgba(13, 14, 16, 0.97) 72%);
+    radial-gradient(130% 100% at 50% -10%, rgba(52, 40, 84, 0.94), rgba(12, 8, 22, 0.97) 72%);
 }
 #screen-overlay::before {
   content: "";
@@ -582,6 +598,12 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
   padding-bottom: 14px;
   margin-bottom: 12px;
 }
+/* Title sleeve: a low indigo-horizon wash behind the wordmark block. */
+.title-sleeve {
+  background: linear-gradient(180deg, rgba(67, 40, 74, 0.42), rgba(27, 18, 48, 0.12) 70%, rgba(0, 0, 0, 0));
+  padding: 12px 14px 14px;
+  margin: -6px -14px 12px;
+}
 .sleeve-main {
   min-width: 0;
 }
@@ -637,7 +659,7 @@ summary { cursor: pointer; font-weight: 700; letter-spacing: .04em; }
   image-rendering: pixelated;
   border: 1px solid var(--rule);
   box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
-  background: #0a0c10;
+  background: #14101f;
 }
 .tx-clock {
   flex: 0 0 auto;
@@ -739,8 +761,8 @@ button.primary:focus-visible {
   .title-sleeve {
     flex-wrap: wrap;
     gap: 14px;
-    padding-bottom: 14px;
-    margin-bottom: 14px;
+    padding: 8px 10px 12px;
+    margin: -4px -10px 12px;
   }
   .title-sleeve h1 {
     font-size: 28px;
@@ -752,6 +774,24 @@ button.primary:focus-visible {
   .birt-portrait {
     width: 80px;
     height: 80px;
+  }
+  .mode-card {
+    padding: 7px 10px;
+  }
+  .mode-card span {
+    font-size: 11px;
+    margin-top: 1px;
+  }
+  .btn-row {
+    gap: 8px;
+    margin: 10px 0 4px;
+  }
+  .note-line {
+    margin: 6px 0;
+    font-size: 11px !important;
+  }
+  .stat-strip span {
+    padding: 4px 10px;
   }
   .stat-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -773,7 +813,19 @@ button.primary:focus-visible {
   margin: 0 auto 10px;
   image-rendering: pixelated;
   border: 1px solid var(--rule);
-  background: #0b0e16;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+  background: #14101f;
+}
+
+/* The next action on a pick screen: impossible to miss, right above the cards. */
+.pick-lead {
+  color: var(--ink) !important;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 13px !important;
+  border-left: 3px solid var(--accent-2);
+  padding-left: 10px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -782,6 +834,12 @@ button.primary:focus-visible {
   }
   .choice-card:hover,
   .choice-card:focus-visible {
+    transform: none;
+  }
+  button, .btn {
+    transition: none;
+  }
+  button:active {
     transform: none;
   }
 }
@@ -821,7 +879,7 @@ button.primary:focus-visible {
 }
 .mode-card {
   flex: 1;
-  background: rgba(17, 18, 20, 0.84);
+  background: rgba(13, 10, 24, 0.84);
   border: 1px solid var(--rule);
   color: var(--ink);
   padding: 10px 12px;
