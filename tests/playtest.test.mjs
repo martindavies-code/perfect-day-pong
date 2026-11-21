@@ -67,9 +67,9 @@ const names = { player: 'Birt', opponent: 'Dando' };
 const advP = { ...createMatchScore(), playerPoints: 4, opponentPoints: 3 };
 const advO = { ...createMatchScore(), playerPoints: 3, opponentPoints: 4 };
 assert.equal(getScoreCall(advP, names), 'Advantage, Birt. Match point, you.');
-assert.equal(getScoreCall(advO, names), 'Advantage, Dando. Match point, opponent.');
+assert.equal(getScoreCall(advO, names), 'Advantage, Dando. Match point, Dando.');
 assert.equal(getSpokenScoreCall(advP, names), 'Advantage, Birt. Match point, you.');
-assert.equal(getSpokenScoreCall(advO, names), 'Advantage, Dando. Match point, opponent.');
+assert.equal(getSpokenScoreCall(advO, names), 'Advantage, Dando. Match point, Dando.');
 assert.equal(getScoreCall(advP), 'Advantage, you. Match point, you.', 'No names falls back to generic wording');
 assert.equal(getScoreCall({ ...createMatchScore(), playerPoints: 3, opponentPoints: 3 }, names), 'Deuce.', 'Deuce stays unnamed');
 assert.equal(getSpokenScoreCall({ ...createMatchScore(), playerPoints: 1, opponentPoints: 0 }, names), '15. Love.', 'Point calls stay unnamed');
@@ -155,3 +155,15 @@ try {
   input.destroy();
 } finally { globalThis.window = oldWindow; globalThis.document = oldDocument; navigator.getGamepads = oldGetGamepads; }
 console.log('Playtest controls, spin guide, scoring, route, local-only voice and input-layout regressions passed.');
+
+// Match point and match result name the actual opponent, on screen and spoken.
+{
+  const dando = { player: 'Birt', opponent: 'Dando' };
+  const mpO = { ...createMatchScore(), playerPoints: 1, opponentPoints: 3 };
+  assert.match(getScoreCall(mpO, dando), /Match point, Dando\.$/);
+  assert.doesNotMatch(getScoreCall(mpO, dando), /opponent/i, 'No generic "opponent" in the on-screen match point call');
+  assert.match(getSpokenScoreCall(mpO, dando), /^Match point, Dando\. /, 'Spoken match point leads with the opponent surname');
+  assert.doesNotMatch(getSpokenScoreCall(mpO, dando), /opponent/i, 'No generic "opponent" in the spoken match point call');
+  assert.match(getSpokenScoreCall(mpO, { player: 'Birt', opponent: 'Brodsky Quartet' }), /^Match point, Brodsky Quartet\. /);
+  assert.equal(getScoreCall({ ...mpO, winner: 'opponent' }, dando), 'Match to Dando.');
+}
