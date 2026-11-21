@@ -598,43 +598,64 @@ export function stepBallPhysics(ball, playerPaddle, opponentPaddle, dt, options 
 // 4. FINITE BEATABLE OPPONENT AI
 // ============================================================================
 
+// Causal opponent model (no random return roll):
+//  - It SEES the ball only as it was `reactionDelayMs` ago (delayed observation).
+//  - It extrapolates that old state linearly with known gravity and wall folds.
+//    It cannot see spin, so spin curvature after the observation is error that
+//    grows with flight time; wide/fast/spun balls therefore cost it accuracy.
+//  - It starts moving only after the reaction delay, with a per-profile
+//    perception bias (predictionError) fixed for the approach.
+//  - Its bat has a hard speed cap (maxSpeed) and finite acceleration: it
+//    cannot teleport, and distance must be covered inside the flight time.
+//  - It never reads player input, click timing or streak state.
+// A miss is whatever those limits produce. `missChance` is accepted for
+// backwards compatibility with opponent profiles but is deliberately unused.
+export const AI_ACCEL_FACTOR = 4.0; // accel = maxSpeed * factor (units/s^2)
+export const AI_BIAS_SCALE = 1.0;
+
 export function createAIState({
   reactionDelayMs = 180,
   maxSpeed = 6.2,
   predictionError = 0.65,
-  missChance = 0.08,
 } = {}) {
   return {
     reactionDelayMs: Math.max(110, reactionDelayMs),
     maxSpeed,
     predictionError,
-    missChance,
     reactionTimer: 0,
     targetX: 0,
     targetY: 0,
+    velX: 0,
+    velY: 0,
+    clock: 0,
+    history: [],
+    biasX: 0,
+    biasY: 0,
     wasApproaching: false,
-    intentionalMiss: false,
     retargetTimer: 0,
   };
 }
 
+function foldAxis(v, half) {
+  const span = half * 4;
+  let w = ((v + half) % span + span) % span;
+  if (w > half * 2) w = span - w;
+  return w - half;
+}
+
 export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM, options = {}) {
   const approaching = ball.vz > 0;
+  ai.clock += dt;
   ai.retargetTimer = Math.max(0, ai.retargetTimer - dt);
 
+  ai.history.push({ t: ai.clock, x: ball.x, y: ball.y, z: ball.z, vx: ball.vx, vy: ball.vy, vz: ball.vz });
+  const keepFrom = ai.clock - ai.reactionDelayMs / 1000 - 0.3;
+  while (ai.history.length > 2 && ai.history[1].t < keepFrom) ai.history.shift();
+
   if (approaching && !ai.wasApproaching) {
-    ai.reactionTimer = Math.max(0.11, ai.reactionDelayMs / 1000);
-    ai.intentionalMiss = rng() < ai.missChance;
-    const errAngle = (rng() - 0.5) * 2;
-    const errY = (rng() - 0.5) * 2;
-    if (ai.intentionalMiss) {
-      const dir = rng() < 0.5 ? -1 : 1;
-      ai.errorOffsetX = dir * (paddle.width * 0.95 + 0.6);
-      ai.errorOffsetY = errY * 0.8;
-    } else {
-      ai.errorOffsetX = errAngle * ai.predictionError;
-      ai.errorOffsetY = errY * ai.predictionError * 0.75;
-    }
+    ai.reactionTimer = ai.reactionDelayMs / 1000;
+    ai.biasX = (rng() - 0.5) * 2 * ai.predictionError * AI_BIAS_SCALE;
+    ai.biasY = (rng() - 0.5) * 2 * ai.predictionError * AI_BIAS_SCALE * 0.75;
   }
   ai.wasApproaching = approaching;
 
@@ -642,17 +663,19 @@ export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM, opt
     if (ai.reactionTimer > 0) {
       ai.reactionTimer -= dt;
     } else if (ai.retargetTimer <= 0) {
-      const distZ = Math.max(0, room.opponentZ - ball.z);
-      const timeToPlane = Math.min(1.5, distZ / Math.max(1, ball.vz));
-      let predX = ball.x + ball.vx * timeToPlane * 0.78;
-      let predY = ball.y + ball.vy * timeToPlane * 0.78;
-      if (predX > room.halfW) predX = room.halfW - (predX - room.halfW);
-      if (predX < -room.halfW) predX = -room.halfW - (predX + room.halfW);
-      if (predY > room.halfH) predY = room.halfH - (predY - room.halfH);
-      if (predY < -room.halfH) predY = -room.halfH - (predY + room.halfH);
-      ai.targetX = predX + (ai.errorOffsetX || 0);
-      ai.targetY = predY + (ai.errorOffsetY || 0);
-      ai.retargetTimer = 0.08;
+      const seenAt = ai.clock - ai.reactionDelayMs / 1000;
+      let obs = ai.history[0];
+      for (const h of ai.history) {
+        if (h.t <= seenAt) obs = h;
+        else break;
+      }
+      if (obs.vz > 0) {
+        const tau = Math.min(2.5, Math.max(0, (room.opponentZ - obs.z) / Math.max(1, obs.vz)));
+        const g = options.gravityY ?? room.defaultGravityY;
+        ai.targetX = foldAxis(obs.x + obs.vx * tau, room.halfW) + ai.biasX;
+        ai.targetY = foldAxis(obs.y + obs.vy * tau + 0.5 * g * tau * tau, room.halfH) + ai.biasY;
+        ai.retargetTimer = 0.08;
+      }
     }
   } else {
     ai.targetX = options.idleTargetX ?? 0;
@@ -662,14 +685,29 @@ export function stepAI(ai, paddle, ball, dt, rng = Math.random, room = ROOM, opt
   paddle.prevX = paddle.x;
   paddle.prevY = paddle.y;
 
+  const accel = ai.maxSpeed * AI_ACCEL_FACTOR;
   const dx = ai.targetX - paddle.x;
   const dy = ai.targetY - paddle.y;
   const dist = Math.hypot(dx, dy);
+  let wantVx = 0;
+  let wantVy = 0;
   if (dist > 0.001) {
-    const step = Math.min(dist, ai.maxSpeed * dt);
-    paddle.x += (dx / dist) * step;
-    paddle.y += (dy / dist) * step;
+    const want = Math.min(ai.maxSpeed, Math.sqrt(2 * accel * dist));
+    wantVx = (dx / dist) * want;
+    wantVy = (dy / dist) * want;
   }
+  let dvx = wantVx - ai.velX;
+  let dvy = wantVy - ai.velY;
+  const dvLen = Math.hypot(dvx, dvy);
+  const maxDv = accel * dt;
+  if (dvLen > maxDv) {
+    dvx = (dvx / dvLen) * maxDv;
+    dvy = (dvy / dvLen) * maxDv;
+  }
+  ai.velX += dvx;
+  ai.velY += dvy;
+  paddle.x += ai.velX * dt;
+  paddle.y += ai.velY * dt;
 
   clampPaddle(paddle, room);
   paddle.vx = dt > 0 ? (paddle.x - paddle.prevX) / dt : 0;

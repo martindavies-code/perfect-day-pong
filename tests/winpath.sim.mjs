@@ -72,7 +72,6 @@ function simulateMatch(oppDef, rng, { onScore } = {}) {
     reactionDelayMs: oppDef.reactionDelayMs,
     maxSpeed: oppDef.maxSpeed,
     predictionError: oppDef.predictionError,
-    missChance: oppDef.missChance,
   });
   const tempo = getTempoByIndex(oppDef.act === 3 ? 2 : 1);
   const actBase = 11.4 + (oppDef.act - 1) * 0.9;
