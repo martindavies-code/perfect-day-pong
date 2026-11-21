@@ -1,5 +1,12 @@
 # HANDOVER.md - Perfect Day Pong
 
+## 21 November touch controls, landscape, fullscreen, named match point (Instinct)
+- Touch (`input.js`): pointer events on the court. One finger drags the bat (absolute position, same mapping as the mouse). A quick tap (under 280 ms, under 14 px movement) serves or fires a timed strike. A second finger tapping while the first drags also fires a timed strike. Touch never requests pointer lock. Compatibility mouse events fired after touches are ignored so nothing double-fires. `touchstart` / `touchmove` on the canvas are preventDefault-ed (plus `touch-action: none`), so dragging never scrolls, zooms or pulls to refresh. Menus use ordinary taps. HUD hint shows touch controls after touch input. Physics, AI, timing, scoring unchanged.
+- Landscape (`style.css`): at orientation landscape and height up to 520 px the top bar is one compact row, the bottom hint pills are hidden and the score HUD is compact, so the court gets the room. `100dvh` app height, `overscroll-behavior: none`.
+- Fullscreen: a Fullscreen button appears only where `document.fullscreenEnabled` (Android Chrome, desktop). It requests fullscreen with navigationUI hide and tries a landscape orientation lock (ignored if refused). iPhone Safari has no page fullscreen, so no button there. `manifest.webmanifest` (display fullscreen, landscape) plus mobile meta tags let Add to Home Screen / Install open without browser bars. Browsers decide; a normal Chrome tab cannot be forced to hide its address bar.
+- Calls (`playtest.js`): match point, match result and the level-less score readout now use the opponent call name (e.g. "Match point, Dando.", "Match to Dando."), on screen and spoken. Player side still says "you". Tests in `tests/playtest.test.mjs`.
+- Tests: `npm test` (13 suites), `node tests/ui-progression.test.mjs`, and new `npm run test:touch` (emulated touch in headless Chromium: tap through menus, drag without scroll, tap serves, second finger, 844x390 landscape and 390x780 portrait). Real phone hardware not tested.
+
 ## 21 November AGA-inspired art, copy and UX pass (Instinct, overnight)
 - Scope: art, copy and interface only. No gameplay, physics, AI, timing, scoring, difficulty maths, saves or music changes. BBC Birt / Lou Reed material, named calls and licence-fee jokes kept; SOURCED / SATIRE labelling untouched.
 - Reference: Amiga 1200 AGA-era style as art direction only (https://en.wikipedia.org/wiki/Amiga_Advanced_Graphics_Architecture). No hardware compatibility, palette-index constraints or emulation claimed or attempted.
