@@ -107,6 +107,7 @@ export function createInputManager(canvas, getSettings) {
   window.addEventListener('scroll', refreshCanvasRect, true);
 
   function onMouseMove(e) {
+    if (recentTouch() || e.sourceCapabilities?.firesTouchEvents) return;
     lastInputMethod = 'mouse';
     mouseDeltaMoved = true;
     const sens = (getSettings?.().mouseSensitivity ?? 1.0);
@@ -133,9 +134,82 @@ export function createInputManager(canvas, getSettings) {
   }
 
   function onMouseDown(e) {
+    if (recentTouch() || e.sourceCapabilities?.firesTouchEvents) return;
     emit('gesture');
     if (e.button === 0) {
       lastInputMethod = 'mouse';
+      emit('confirm');
+      pendingActions.add('confirm');
+    }
+  }
+
+  // Touch: one finger drags the bat (absolute, like the mouse). A quick tap
+  // serves / fires a timed strike; a second finger tapping while the first
+  // drags also fires a timed strike. Compatibility mouse events that browsers
+  // synthesise after touches are ignored so nothing fires twice.
+  let lastTouchTime = -1e9;
+  let touchPrimaryId = null;
+  let touchDownTime = 0;
+  let touchDownX = 0;
+  let touchDownY = 0;
+  let touchMoved = false;
+  const TOUCH_TAP_MS = 280;
+  const TOUCH_TAP_SLOP = 14;
+  const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  function recentTouch() { return nowMs() - lastTouchTime < 900; }
+  function isTouchEvent(e) { return e.pointerType === 'touch'; }
+
+  function touchToNorm(e) {
+    const rect = canvasRect;
+    if (!(rect.width > 0 && rect.height > 0)) return;
+    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const ny = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
+    const s0 = viewScale(rect.width, rect.height);
+    const fx = (s0 * ROOM.halfW) / (rect.width * 0.5);
+    const fy = (s0 * ROOM.halfH) / (rect.height * 0.5);
+    const k = 1.0;
+    pointerNormX = Math.max(-1, Math.min(1, (nx / fx) * k));
+    pointerNormY = Math.max(-1, Math.min(1, (ny / fy) * k));
+  }
+
+  function onPointerDown(e) {
+    if (!isTouchEvent(e)) return;
+    lastTouchTime = nowMs();
+    lastInputMethod = 'touch';
+    emit('gesture');
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (touchPrimaryId === null) {
+      touchPrimaryId = e.pointerId;
+      touchDownTime = nowMs();
+      touchDownX = e.clientX;
+      touchDownY = e.clientY;
+      touchMoved = false;
+      refreshCanvasRect();
+      touchToNorm(e);
+    } else {
+      // Extra finger: immediate action tap (serve / timed strike).
+      emit('confirm');
+      pendingActions.add('confirm');
+    }
+  }
+
+  function onPointerMove(e) {
+    if (!isTouchEvent(e)) return;
+    lastTouchTime = nowMs();
+    if (e.pointerId !== touchPrimaryId) return;
+    e.preventDefault();
+    lastInputMethod = 'touch';
+    if (Math.hypot(e.clientX - touchDownX, e.clientY - touchDownY) > TOUCH_TAP_SLOP) touchMoved = true;
+    touchToNorm(e);
+  }
+
+  function onPointerUp(e) {
+    if (!isTouchEvent(e)) return;
+    lastTouchTime = nowMs();
+    if (e.pointerId !== touchPrimaryId) return;
+    touchPrimaryId = null;
+    if (e.type === 'pointerup' && !touchMoved && nowMs() - touchDownTime < TOUCH_TAP_MS) {
       emit('confirm');
       pendingActions.add('confirm');
     }
@@ -175,6 +249,12 @@ export function createInputManager(canvas, getSettings) {
   window.addEventListener('keyup', onKeyUp);
   canvas.addEventListener('mousemove', onMouseMove);
   canvas.addEventListener('mousedown', onMouseDown);
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+  canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('pointerlockchange', onPointerLockChange);
   document.addEventListener('pointerlockerror', onPointerLockError);
@@ -318,7 +398,11 @@ export function createInputManager(canvas, getSettings) {
     };
     pendingActions.clear();
 
-    if (lastInputMethod === 'mouse') {
+    if (lastInputMethod === 'touch') {
+      result.mode = 'absolute';
+      result.targetNormX = pointerNormX;
+      result.targetNormY = pointerNormY;
+    } else if (lastInputMethod === 'mouse') {
       result.mode = 'absolute';
       result.targetNormX = pointerLocked ? virtualMouseX : pointerNormX;
       result.targetNormY = pointerLocked ? virtualMouseY : pointerNormY;
@@ -363,6 +447,10 @@ export function createInputManager(canvas, getSettings) {
     window.removeEventListener('keyup', onKeyUp);
     canvas.removeEventListener('mousemove', onMouseMove);
     canvas.removeEventListener('mousedown', onMouseDown);
+    canvas.removeEventListener('pointerdown', onPointerDown);
+    canvas.removeEventListener('pointermove', onPointerMove);
+    canvas.removeEventListener('pointerup', onPointerUp);
+    canvas.removeEventListener('pointercancel', onPointerUp);
     document.removeEventListener('pointerlockchange', onPointerLockChange);
     document.removeEventListener('pointerlockerror', onPointerLockError);
     window.removeEventListener('gamepadconnected', onGamepadConnected);

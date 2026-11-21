@@ -1,0 +1,12 @@
+{
+  "name": "Perfect Day Pong",
+  "short_name": "Pong",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0d0a18",
+  "theme_color": "#0d0a18",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

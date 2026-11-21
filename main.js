@@ -506,7 +506,7 @@ function updateHud() {
     setHudHtml(oppNameHud, `${m.oppDef.name.toUpperCase()} ${m.score.server === 'opponent' ? '<span id="srv-opp">*</span>' : ''}`);
     setHudText(document.getElementById('srv-player'), m.score.server === 'player' ? '*' : '');
     const scoreCall = getScoreCall(m.score, scoreCallNames(m));
-    setHudText(statusHud, /Match point/.test(scoreCall) ? (scoreCall.includes('Match point, you') ? 'MATCH POINT: YOU' : 'MATCH POINT: OPPONENT') : fmt.statusText);
+    setHudText(statusHud, /Match point/.test(scoreCall) ? (scoreCall.includes('Match point, you') ? 'MATCH POINT: YOU' : `MATCH POINT: ${scoreCallNames(m).opponent.toUpperCase()}`) : fmt.statusText);
     const tempo = getTempoByIndex(m.tempoIndex);
     setHudText(tempoHud, `${tempo.label} // ${tempo.bpm} BPM`);
     setHudText(announcerHud, m.announcer);
@@ -518,6 +518,8 @@ function updateHud() {
   const method = input.getLastInputMethod();
   if (method === 'gamepad') {
     setHudText(controlsHint, 'PAD: STICK/D-PAD MOVE · A: SERVE · START: PAUSE');
+  } else if (method === 'touch') {
+    setHudText(controlsHint, 'TOUCH: DRAG TO MOVE BAT · TAP: SERVE / TIMED STRIKE · 2ND FINGER TAP: STRIKE');
   } else if (method === 'keyboard') {
     setHudText(controlsHint, 'KEYS: WASD/ARROWS MOVE · SPACE: SERVE · ESC: PAUSE · M: MUTE');
   } else {
@@ -655,7 +657,7 @@ function renderMechanicsHtml() {
     <div class="aim-grid"><div><strong>AIM AT CONTACT</strong><p>Hit the right / left edge of your bat to send the ball right / left. Top / bottom changes its vertical launch. The centre gives a straighter return; gravity still pulls down.</p></div>
     <div><strong>SWIPE FOR CURVE</strong><p>Moving the bat as it hits adds sideways / vertical speed and spin. Spin bends the flight and fades over time. A still edge hit also adds a smaller counter-curve. Curve Master increases spin by 35% per stack.</p></div>
     <div><strong>TIMED STRIKES &amp; ON FIRE</strong><p>Optional: click as the ball meets your bat (about a tenth of a second either way) for a faster return. Three timed strikes in a row and you are ON FIRE - a flaming ball and hotter returns for five seconds. A click with no contact in the window is mistimed: it costs the streak and the fire, never the return. Returning without clicking is always fine and changes nothing. Timing follows the ball, not the music.</p></div></div>
-    <p>Mouse follows your latest position without easing. Click to serve and lock the pointer; Esc pauses and releases it. WASD / arrows or a gamepad also work. The ball quickens on its own as the rally builds; the SPEED meter shows how fast it is travelling. Bat-speed upgrades affect keys / gamepad, not direct mouse tracking.</p>
+    <p>Mouse follows your latest position without easing. Click to serve and lock the pointer; Esc pauses and releases it. On a touchscreen, drag to move the bat, tap to serve or strike, or tap with a second finger while dragging. WASD / arrows or a gamepad also work. The ball quickens on its own as the rally builds; the SPEED meter shows how fast it is travelling. Bat-speed upgrades affect keys / gamepad, not direct mouse tracking.</p>
     <p>Scores read YOU first, opponent second. Win four points with a two-point lead; Quick Deuce can add a deciding point. Voice is optional and never holds up a serve.</p></details>`;
 }
 function renderRouteHtml() {
@@ -1305,7 +1307,7 @@ input.on('gesture', () => scoreAnnouncer.unlock());
 input.on('confirm', () => {
   if (screen !== 'playing') {
     // Only trigger via keyboard/gamepad confirm; mouse clicks already fire button onclick directly
-    if (input.getLastInputMethod() !== 'mouse') {
+    if (input.getLastInputMethod() !== 'mouse' && input.getLastInputMethod() !== 'touch') {
       activateOverlayFocus();
     }
     return;
@@ -1338,6 +1340,27 @@ input.on('confirm', () => {
   }
 });
 
+
+// Fullscreen: only offered where the browser supports it (Android Chrome,
+// desktop). iPhone Safari has no page fullscreen; there, Add to Home Screen
+// (see manifest) is the way to lose the browser bars.
+const btnFullscreen = document.getElementById('btn-fullscreen');
+if (btnFullscreen && document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+  btnFullscreen.hidden = false;
+  const syncFs = () => { btnFullscreen.textContent = document.fullscreenElement ? 'Exit full' : 'Fullscreen'; };
+  document.addEventListener('fullscreenchange', syncFs);
+  btnFullscreen.onclick = async () => {
+    audio.unlockFromGesture();
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+        try { await window.screen.orientation?.lock?.('landscape'); } catch { /* not supported or not allowed */ }
+      }
+    } catch { /* browser refused; stay windowed */ }
+  };
+}
 
 btnMute.onclick = () => {
   audio.unlockFromGesture();
