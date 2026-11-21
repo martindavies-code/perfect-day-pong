@@ -935,3 +935,25 @@ button.primary:focus-visible {
   border: 1px solid #4a4a55;
 }
 .streak-pips i.lit { background: #ffd23c; border-color: #ffb25e; }
+
+/* Touch and mobile landscape */
+html, body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+#app { height: 100vh; height: 100dvh; }
+@media (pointer: coarse) {
+  #topbar button.small { min-height: 36px; padding-inline: 12px; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  #topbar { min-height: 30px; padding: 2px 8px; flex-wrap: nowrap; gap: 6px; font-size: 10px; letter-spacing: 0.05em; }
+  #top-title, #audio-status, .fac-cat { display: none; }
+  .topbar-right { flex-wrap: nowrap; gap: 6px; }
+  #topbar button.small { min-height: 28px; padding: 2px 10px; font-size: 11px; }
+  #hud-overlay { padding: 4px 8px; }
+  #hud-top { flex-wrap: nowrap; gap: 6px; }
+  .score-block { min-width: 120px; padding: 3px 8px; flex: 0 1 200px; }
+  .score-row { font-size: 10px; gap: 8px; }
+  .score-val { font-size: 22px; }
+  .hud-center { padding: 3px 8px; }
+  .announcer-line { font-size: 11px; margin-top: 0; }
+  #hud-bottom { display: none; }
+  #screen-overlay { padding: 8px; align-items: flex-start; }
+}
